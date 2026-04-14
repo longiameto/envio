@@ -15,11 +15,11 @@
     input, button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: var(--text); font-size: 0.95rem; }
     input:focus { outline: 2px solid var(--accent); border-color: transparent; }
     button { cursor: pointer; font-weight: 600; transition: 0.2s; border: none; }
-    .btn-role { flex: 1; background: #334155; color: white; }
+    .btn-role { flex: 1; background: #334155; color: white; padding: 15px; font-size: 1.1rem; }
     .btn-role.active { background: var(--accent); }
     .btn-action { background: var(--accent); color: white; margin-top: 10px; }
     .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-reset { background: #475569; color: white; margin-top: 8px; font-size: 0.85rem; }
+    .btn-secondary { background: #475569; color: white; margin-top: 8px; }
     .info-box { background: #0f172a; padding: 8px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; word-break: break-all; margin: 8px 0; border: 1px dashed #475569; }
     .status { margin-top: 10px; padding: 8px; border-radius: 6px; text-align: center; font-size: 0.9rem; }
     .status.wait { background: #1e293b; color: #94a3b8; }
@@ -33,32 +33,58 @@
     .file-item { padding: 4px 0; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; }
     .hidden { display: none; }
     .note { font-size: 0.75rem; color: #64748b; margin-top: 5px; text-align: center; }
+    .step-indicator { text-align: center; margin-bottom: 15px; padding: 8px; background: #0f172a; border-radius: 6px; font-size: 0.9rem; }
+    .file-select-buttons { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>📡 Transferencia P2P Segura</h1>
     
-    <div class="row">
-      <button class="btn-role" id="btn-send" onclick="setRole('send')">📤 Emisor</button>
-      <button class="btn-role" id="btn-receive" onclick="setRole('receive')">📥 Receptor</button>
+    <div class="step-indicator" id="step-indicator">Paso 1: Selecciona tu rol</div>
+
+    <!-- PASO 1: SELECCIÓN DE ROL -->
+    <div id="role-selection">
+      <div class="row">
+        <button class="btn-role" id="btn-send" onclick="setRole('send')">📤 Emisor</button>
+        <button class="btn-role" id="btn-receive" onclick="setRole('receive')">📥 Receptor</button>
+      </div>
     </div>
 
-    <input type="text" id="custom-id" placeholder="ID personalizado (6-32 chars)" maxlength="32">
-    <input type="password" id="password" placeholder="Contraseña de sesión (opcional)">
-    <div class="note">🔒 La contraseña evita que terceros se conecten a tu ID</div>
+    <!-- PASO 2: ID Y CONTRASEÑA -->
+    <div id="auth-section" class="hidden">
+      <input type="text" id="custom-id" placeholder="ID personalizado (6-32 caracteres)" maxlength="32">
+      <input type="password" id="password" placeholder="Contraseña de sesión (opcional pero recomendado)">
+      <div class="note">🔒 La contraseña evita que terceros se conecten a tu ID</div>
+      <button class="btn-action" id="btn-continue" onclick="continueSetup()">Continuar →</button>
+    </div>
 
+    <!-- PASO 3: UI DE EMISOR -->
     <div id="sender-ui" class="hidden">
-      <input type="file" id="file-input" multiple webkitdirectory directory>
-      <div class="note">📂 Selecciona archivos o carpetas completas</div>
-      <button class="btn-action" id="btn-start" disabled onclick="startTransfer()">🚀 Iniciar Transferencia</button>
+      <div class="info-box" id="my-id-display"></div>
+      <button class="btn-secondary" onclick="copyId()">📋 Copiar ID</button>
+      <div class="note">Comparte este ID con el receptor</div>
+      
+      <div class="file-select-buttons">
+        <input type="file" id="file-input" multiple style="display:none" onchange="handleFilesSelected()">
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none" onchange="handleFilesSelected()">
+        <button class="btn-action" onclick="document.getElementById('file-input').click()">📄 Seleccionar Archivos</button>
+        <button class="btn-secondary" onclick="document.getElementById('folder-input').click()">📂 Seleccionar Carpeta</button>
+      </div>
+      
+      <div id="files-selected" class="hidden">
+        <div class="note" id="files-count"></div>
+        <button class="btn-action" id="btn-start" onclick="startTransfer()">🚀 Iniciar Transferencia</button>
+      </div>
     </div>
 
+    <!-- PASO 3: UI DE RECEPTOR -->
     <div id="receiver-ui" class="hidden">
       <input type="text" id="target-id" placeholder="ID del emisor">
-      <button class="btn-action" onclick="connectToSender()">🔗 Conectar</button>
+      <button class="btn-action" onclick="connectToSender()">🔗 Conectar al Emisor</button>
     </div>
 
+    <!-- PROGRESO -->
     <div class="progress-container" id="progress-ui">
       <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
         <span id="progress-file">Esperando...</span>
@@ -72,8 +98,7 @@
       <div class="file-list" id="file-log"></div>
     </div>
 
-    <div id="status" class="status wait">⏳ Configurando...</div>
-    <button class="btn-reset" onclick="resetTransfer()">🔄 Resetear Estado (si se queda bloqueado)</button>
+    <div id="status" class="status wait">⏳ Selecciona si eres Emisor o Receptor</div>
   </div>
 
   <script>
@@ -85,6 +110,7 @@
     let peer, conn, role = null, files = [], currentFileIndex = 0;
     let transferId, sentChunks = new Set(), receivedChunks = new Set();
     let startTime, bytesTransferred = 0, speedHistory = [];
+    let authComplete = false;
 
     // --- INDEXEDDB (Persistencia Local) ---
     const dbPromise = new Promise((resolve, reject) => {
@@ -120,9 +146,45 @@
       role = r;
       document.getElementById('btn-send').classList.toggle('active', r === 'send');
       document.getElementById('btn-receive').classList.toggle('active', r === 'receive');
-      document.getElementById('sender-ui').classList.toggle('hidden', r !== 'send');
-      document.getElementById('receiver-ui').classList.toggle('hidden', r !== 'receive');
-      initPeer();
+      document.getElementById('role-selection').classList.add('hidden');
+      document.getElementById('auth-section').classList.remove('hidden');
+      document.getElementById('step-indicator').textContent = `Paso 2: Configura tu ID y contraseña (${r === 'send' ? 'Emisor' : 'Receptor'})`;
+      
+      const actionText = r === 'send' ? 'Continuar →' : 'Conectar →';
+      document.getElementById('btn-continue').textContent = actionText;
+      
+      if (r === 'receive') {
+        document.getElementById('btn-continue').onclick = connectToSender;
+      } else {
+        document.getElementById('btn-continue').onclick = continueSetup;
+      }
+      
+      setStatus(`🔐 Ingresa tu ID personalizado (6-32 caracteres)`, 'wait');
+    }
+
+    function continueSetup() {
+      const idInput = document.getElementById('custom-id').value.trim();
+      const pwd = document.getElementById('password').value;
+      
+      if (idInput.length < 6 || idInput.length > 32) {
+        return setStatus('❌ El ID debe tener entre 6 y 32 caracteres', 'err');
+      }
+      if (!/^[a-zA-Z0-9_-]+$/.test(idInput)) {
+        return setStatus('❌ Solo letras, números, guiones y guiones bajos', 'err');
+      }
+      
+      transferId = `p2p-${idInput}`;
+      authComplete = true;
+      
+      if (role === 'send') {
+        document.getElementById('auth-section').classList.add('hidden');
+        document.getElementById('sender-ui').classList.remove('hidden');
+        document.getElementById('my-id-display').textContent = `Tu ID: ${idInput}`;
+        document.getElementById('step-indicator').textContent = 'Paso 3: Selecciona archivos o carpetas';
+        initPeer();
+      } else {
+        connectToSender();
+      }
     }
 
     function setStatus(msg, type = 'wait') {
@@ -146,32 +208,42 @@
       log.scrollTop = log.scrollHeight;
     }
 
+    function handleFilesSelected() {
+      const fileInput = document.getElementById('file-input');
+      const folderInput = document.getElementById('folder-input');
+      
+      files = Array.from(fileInput.files).concat(Array.from(folderInput.files));
+      files = files.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
+      
+      if (files.length > 0) {
+        document.getElementById('files-selected').classList.remove('hidden');
+        document.getElementById('files-count').textContent = `📦 ${files.length} archivo(s) seleccionado(s) - ${formatSize(files.reduce((a, f) => a + f.size, 0))}`;
+        setStatus('✅ Archivos listos. Pulsa "Iniciar Transferencia"', 'ok');
+      }
+    }
+
+    function formatSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function copyId() {
+      const id = document.getElementById('custom-id').value;
+      navigator.clipboard.writeText(id).then(() => {
+        setStatus('📋 ID copiado al portapapeles', 'ok');
+        setTimeout(() => setStatus('✅ Comparte este ID con el receptor', 'wait'), 2000);
+      });
+    }
+
     // --- PEERJS & CONEXIÓN ---
-    async function initPeer() {
-      const idInput = document.getElementById('custom-id').value.trim();
-      if (idInput.length < 6 || idInput.length > 32) {
-        return setStatus('❌ El ID debe tener entre 6 y 32 caracteres', 'err');
-      }
-      if (!/^[a-zA-Z0-9_-]+$/.test(idInput)) {
-        return setStatus('❌ Solo letras, números, guiones y guiones bajos', 'err');
-      }
-
-      transferId = `p2p-${idInput}`;
-      const saved = await loadState(transferId);
-      if (saved) {
-        setStatus('🔄 Recuperando sesión anterior...', 'wait');
-        sentChunks = new Set(saved.sentChunks || []);
-        receivedChunks = new Set(saved.receivedChunks || []);
-        files = saved.files || [];
-        currentFileIndex = saved.currentFileIndex || 0;
-        if (role === 'send') document.getElementById('btn-start').disabled = false;
-      }
-
+    function initPeer() {
       peer = new Peer(transferId, { debug: 0 });
       
       peer.on('open', () => {
-        setStatus(role === 'send' ? '🟢 Listo. Selecciona archivos e inicia.' : '🟢 Listo. Conecta al emisor.', 'ok');
-        if (role === 'send' && saved) setStatus('🔄 Sesión recuperada. Pulsa Iniciar para continuar.', 'ok');
+        setStatus('🟢 Listo. Esperando conexión del receptor...', 'ok');
       });
 
       peer.on('connection', c => {
@@ -189,9 +261,21 @@
     }
 
     function connectToSender() {
-      const target = `p2p-${document.getElementById('target-id').value.trim()}`;
-      if (!target) return setStatus('❌ Ingresa un ID válido', 'err');
-      conn = peer.connect(target);
+      if (!authComplete) {
+        const idInput = document.getElementById('custom-id').value.trim();
+        if (idInput.length < 6 || idInput.length > 32) {
+          return setStatus('❌ El ID debe tener entre 6 y 32 caracteres', 'err');
+        }
+        transferId = `p2p-${idInput}`;
+        authComplete = true;
+      }
+      
+      const targetId = document.getElementById('target-id').value.trim();
+      const target = `p2p-${targetId}`;
+      
+      if (!targetId) return setStatus('❌ Ingresa el ID del emisor', 'err');
+      
+      conn = peer ? peer.connect(target) : new Peer().connect(target);
       setupConnection();
     }
 
@@ -203,7 +287,8 @@
           setStatus('🔐 Autenticando...', 'wait');
         } else {
           conn.on('data', handleReceiverData);
-          conn.send({ type: 'auth_request' });
+          conn.send({ type: 'auth_request', targetId: document.getElementById('target-id').value });
+          setStatus('🔐 Esperando autenticación...', 'wait');
         }
       });
 
@@ -230,10 +315,9 @@
           return setStatus('❌ Contraseña incorrecta. Conexión rechazada.', 'err');
         }
         conn.send({ type: 'auth_ok' });
-        files = data.files || [];
-        currentFileIndex = data.currentFileIndex || 0;
-        sentChunks = new Set(data.sentChunks || []);
         setStatus('✅ Conectado. Esperando archivos...', 'ok');
+        document.getElementById('receiver-ui').classList.add('hidden');
+        document.getElementById('progress-ui').style.display = 'block';
       } else if (data.type === 'file_info') {
         handleChunk(data, true);
       } else if (data.type === 'chunk') {
@@ -245,16 +329,14 @@
 
     // --- TRANSFER LOGIC ---
     async function startTransfer() {
-      const input = document.getElementById('file-input');
-      if (!input.files.length) return setStatus('❌ Selecciona al menos un archivo', 'err');
+      if (!files.length) return setStatus('❌ Selecciona al menos un archivo', 'err');
       
-      files = Array.from(input.files).sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath));
       currentFileIndex = 0;
       sentChunks.clear();
       startTime = Date.now();
       bytesTransferred = 0;
       
-      await saveState({ id: transferId, role: 'send', files, currentFileIndex, sentChunks: [], password: document.getElementById('password').value });
+      await saveState({ id: transferId, role: 'send', files: files.map(f => ({name: f.name, size: f.size, webkitRelativePath: f.webkitRelativePath})), currentFileIndex, sentChunks: [], password: document.getElementById('password').value });
       setStatus('📤 Preparando archivos...', 'wait');
       
       if (conn?.open) {
@@ -279,16 +361,15 @@
           
           bytesTransferred += buffer.byteLength;
           updateProgressUI(file.name, i, files.length, c, totalChunks);
-          await saveState({ id: transferId, role: 'send', files, currentFileIndex: i, sentChunks: Array.from(sentChunks) });
+          await saveState({ id: transferId, role: 'send', files: files.map(f => ({name: f.name, size: f.size, webkitRelativePath: f.webkitRelativePath})), currentFileIndex: i, sentChunks: Array.from(sentChunks) });
           
-          // Flow control: espera activa para no saturar
           if (conn.bufferedAmount > 16 * 1024 * 1024) {
             await new Promise(r => setTimeout(r, 50));
           }
         }
         conn.send({ type: 'complete', fileName: file.name });
         currentFileIndex++;
-        logFile(`✅ ${file.name}`);
+        logFile(`✅ ${file.webkitRelativePath || file.name}`);
       }
       setStatus('🎉 Transferencia completada', 'ok');
       await clearState(transferId);
@@ -300,8 +381,6 @@
         updateProgressUI(data.fileName, 0, 1, 0, data.totalChunks);
       } else {
         if (receivedChunks.has(`${data.fileId}-${data.index}`)) return;
-        // En una app real aquí se guardaría en IDB para resume completo del receptor
-        // Por simplicidad y rendimiento, se mantiene en memoria hasta completar
       }
     }
 
@@ -322,15 +401,6 @@
 
     function finalizeFile(fileName) {
       logFile(`✅ ${fileName} descargado`);
-      // Aquí se ensamblaría el blob final si se guardaran chunks en IDB
-      // Para mantenerlo ligero, el navegador descarga automáticamente al completar
-    }
-
-    async function resetTransfer() {
-      if (confirm('¿Resetear? Se perderá el progreso guardado.')) {
-        await clearState(transferId);
-        location.reload();
-      }
     }
 
     // Auto-restore si hay sesión guardada
@@ -344,10 +414,11 @@
       });
       if (keys.length > 0) {
         const saved = await loadState(keys[0]);
-        if (saved) {
+        if (saved && saved.role === 'send') {
           document.getElementById('custom-id').value = keys[0].replace('p2p-', '');
           document.getElementById('password').value = saved.password || '';
-          setRole(saved.role);
+          setRole('send');
+          setStatus('🔄 Sesión anterior encontrada. Selecciona archivos para continuar.', 'wait');
         }
       }
     };
