@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comparte Archivos - Simple & P2P</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; --error: #ef4444; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+    .container { background: var(--card); padding: 2rem; border-radius: 12px; width: 100%; max-width: 480px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+    h1 { text-align: center; margin-bottom: 1.5rem; font-size: 1.5rem; }
+    .role-btns { display: flex; gap: 10px; margin-bottom: 1.5rem; }
+    button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: 0.2s; font-weight: 600; }
+    .btn-send { background: var(--accent); color: white; }
+    .btn-receive { background: #475569; color: white; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .panel { display: none; animation: fade 0.3s; }
+    @keyframes fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    input[type="text"], input[type="file"] { width: 100%; padding: 10px; margin: 8px 0; background: #0b1120; border: 1px solid #334155; border-radius: 6px; color: var(--text); }
+    input[type="text"]:focus { outline: 2px solid var(--accent); }
+    .id-box { background: #0b1120; padding: 10px; border-radius: 6px; font-family: monospace; word-break: break-all; margin: 8px 0; border: 1px dashed #475569; }
+    .status { margin-top: 1rem; padding: 8px; border-radius: 6px; text-align: center; font-size: 0.9rem; }
+    .status.wait { background: #334155; }
+    .status.ok { background: #064e3b; color: var(--success); }
+    .status.err { background: #7f1d1d; color: var(--error); }
+    .copy-btn { background: #334155; color: var(--text); margin-top: 5px; width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📁 Comparte Archivos P2P</h1>
+    <div class="role-btns">
+      <button class="btn-send" onclick="setRole('send')">📤 Enviar</button>
+      <button class="btn-receive" onclick="setRole('receive')">📥 Recibir</button>
+    </div>
+
+    <div id="sender-panel" class="panel">
+      <p>Tu ID de conexión:</p>
+      <div class="id-box" id="my-id">Generando...</div>
+      <button class="copy-btn" onclick="copyId()">📋 Copiar ID</button>
+      <p style="margin:10px 0; font-size:0.9rem; color:#94a3b8;">Comparte este ID con quien recibirá los archivos.</p>
+      <input type="file" id="file-input" multiple>
+      <button id="btn-send-files" class="btn-send" disabled onclick="sendFiles()">📤 Enviar archivos</button>
+      <div id="sender-status" class="status wait">⏳ Iniciando...</div>
+    </div>
+
+    <div id="receiver-panel" class="panel">
+      <input type="text" id="target-id" placeholder="Pega aquí el ID del remitente">
+      <button class="btn-receive" onclick="connectToSender()">🔗 Conectar</button>
+      <div id="receiver-status" class="status wait">⏳ Esperando...</div>
+    </div>
+  </div>
+
+  <script>
+    let peer, conn, role = null;
+
+    function setRole(r) {
+      role = r;
+      document.getElementById('sender-panel').style.display = r === 'send' ? 'block' : 'none';
+      document.getElementById('receiver-panel').style.display = r === 'receive' ? 'block' : 'none';
+      initPeer();
+    }
+
+    function initPeer() {
+      peer = new Peer({ debug: 2 });
+      peer.on('open', id => {
+        if (role === 'send') {
+          document.getElementById('my-id').textContent = id;
+          document.getElementById('sender-status').textContent = '🟢 Listo. Esperando conexión...';
+          document.getElementById('sender-status').className = 'status ok';
+        }
+      });
+
+      peer.on('connection', connection => {
+        conn = connection;
+        setupConnection();
+      });
+
+      peer.on('error', err => {
+        console.error(err);
+        const status = role === 'send' ? 'sender-status' : 'receiver-status';
+        document.getElementById(status).textContent = '❌ Error: ' + err.type;
+        document.getElementById(status).className = 'status err';
+      });
+    }
+
+    function connectToSender() {
+      const id = document.getElementById('target-id').value.trim();
+      if (!id) return alert('Ingresa un ID válido');
+      conn = peer.connect(id);
+      setupConnection();
+    }
+
+    function setupConnection() {
+      conn.on('open', () => {
+        if (role === 'send') {
+          document.getElementById('sender-status').textContent = '✅ Conectado. Selecciona y envía archivos.';
+          document.getElementById('btn-send-files').disabled = false;
+        } else {
+          document.getElementById('receiver-status').textContent = '✅ Conectado. Esperando archivos...';
+        }
+      });
+
+      conn.on('data', data => {
+        if (role === 'send') return;
+        const { name, type, size, buffer } = data;
+        const blob = new Blob([buffer], { type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+        document.getElementById('receiver-status').textContent = `✅ Descargado: ${name} (${(size/1024/1024).toFixed(1)} MB)`;
+      });
+
+      conn.on('close', () => {
+        const status = role === 'send' ? 'sender-status' : 'receiver-status';
+        document.getElementById(status).textContent = '🔌 Conexión cerrada. Refresca para nueva sesión.';
+      });
+    }
+
+    function sendFiles() {
+      if (!conn?.open) return alert('No hay conexión activa');
+      const files = document.getElementById('file-input').files;
+      if (!files.length) return alert('Selecciona al menos un archivo');
+
+      document.getElementById('sender-status').textContent = `📤 Enviando ${files.length} archivo(s)...`;
+      Array.from(files).forEach((file, i) => {
+        const reader = new FileReader();
+        reader.onload = () => conn.send({ name: file.name, type: file.type, size: file.size, buffer: reader.result });
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function copyId() {
+      const id = document.getElementById('my-id').textContent;
+      navigator.clipboard.writeText(id).then(() => alert('ID copiado al portapapeles'));
+    }
+  </script>
+</body>
+</html>
