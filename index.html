@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comparte Archivos P2P - v7.0 Final</title>
+  <title>Comparte Archivos P2P - v8.0</title>
   
-  <!-- Librerías externas -->
+  <!-- Librerías externas (todas gratuitas) -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   
   <style>
-    /* ===== VARIABLES CSS ===== */
     :root {
       --bg: #0b1120;
       --card: #1e293b;
@@ -21,303 +21,112 @@
       --border: #334155;
     }
     
-    /* ===== RESET Y BASE ===== */
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: system-ui, -apple-system, sans-serif;
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --accent: #2563eb;
+      --success: #16a34a;
+      --error: #dc2626;
+      --border: #cbd5e1;
     }
     
-    body {
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; transition: background 0.3s, color 0.3s; }
+    .container { background: var(--card); padding: 1.5rem; border-radius: 16px; width: 100%; max-width: 540px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); transition: background 0.3s; }
+    h1 { text-align: center; margin-bottom: 1.2rem; font-size: 1.5rem; }
+    
+    .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; color: var(--text); font-size: 1.2rem; }
+    
+    .row { display: flex; gap: 10px; margin-bottom: 12px; }
+    input, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.95rem; }
+    input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; }
+    .btn-role { flex: 1; background: var(--border); color: var(--text); padding: 16px; font-size: 1.1rem; }
+    .btn-role.active { background: var(--accent); color: white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+    .btn-action { background: var(--accent); color: white; margin-top: 12px; }
+    .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: var(--border); color: var(--text); margin-top: 10px; }
+    .btn-danger { background: var(--error); color: white; margin-top: 12px; }
+    
+    .info-box { background: var(--bg); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; word-break: break-all; margin: 10px 0; border: 1px dashed var(--border); text-align: center; }
+    .qr-container { display: flex; justify-content: center; margin: 10px 0; background: white; padding: 10px; border-radius: 8px; width: fit-content; margin-inline: auto; }
+    
+    .status { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-size: 0.9rem; }
+    .status.wait { background: var(--border); color: var(--text); opacity: 0.8; }
+    .status.ok { background: var(--success); color: white; }
+    .status.err { background: var(--error); color: white; }
+    
+    .progress-container { margin-top: 15px; background: var(--bg); border-radius: 10px; padding: 12px; display: none; }
+    .progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); width: 0%; transition: width 0.3s; }
+    .stats { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text); opacity: 0.8; margin-top: 5px; }
+    
+    .file-list { max-height: 120px; overflow-y: auto; margin-top: 10px; font-size: 0.85rem; color: var(--text); opacity: 0.9; border-top: 1px solid var(--border); padding-top: 8px; }
+    .file-item { padding: 4px 0; display: flex; justify-content: space-between; }
+    
+    .hidden { display: none !important; }
+    .note { font-size: 0.75rem; color: var(--text); opacity: 0.7; margin-top: 6px; text-align: center; }
+    .step-indicator { text-align: center; margin-bottom: 15px; padding: 8px; background: var(--bg); border-radius: 8px; font-size: 0.9rem; color: var(--accent); font-weight: 600; }
+    
+    .file-select-buttons { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+    
+    /* Drag & Drop styles */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
       padding: 20px;
-    }
-    
-    .container {
-      background: var(--card);
-      padding: 1.5rem;
-      border-radius: 16px;
-      width: 100%;
-      max-width: 540px;
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
-    }
-    
-    h1 {
       text-align: center;
-      margin-bottom: 1.2rem;
-      font-size: 1.5rem;
-    }
-    
-    /* ===== COMPONENTES DE FORMULARIO ===== */
-    .row {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-    
-    input,
-    button {
-      width: 100%;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #0f172a;
-      color: var(--text);
-      font-size: 0.95rem;
-    }
-    
-    input:focus {
-      outline: 2px solid var(--accent);
-      border-color: transparent;
-    }
-    
-    button {
-      cursor: pointer;
-      font-weight: 600;
-      border: none;
+      margin: 10px 0;
       transition: all 0.2s;
+      cursor: pointer;
+    }
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.1);
+    }
+    .drop-zone p { margin: 0; color: var(--text); opacity: 0.8; }
+    
+    .history-container { margin-top: 15px; background: var(--bg); border-radius: 10px; padding: 10px; max-height: 150px; overflow-y: auto; }
+    .history-item { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .history-item:last-child { border-bottom: none; }
+    .history-time { color: var(--text); opacity: 0.7; font-size: 0.75rem; }
+    
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+    .toast { background: var(--card); border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); margin-bottom: 8px; animation: slideIn 0.3s; }
+    .toast.success { border-color: var(--success); }
+    .toast.error { border-color: var(--error); }
+    @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    
+    /* Mobile optimizations */
+    @media (max-width: 480px) {
+      .container { padding: 1rem; }
+      .btn-role { padding: 12px; font-size: 1rem; }
+      input, button { padding: 10px; font-size: 0.9rem; }
     }
     
-    .btn-role {
-      flex: 1;
-      background: #334155;
-      color: white;
-      padding: 16px;
-      font-size: 1.1rem;
-    }
-    
-    .btn-role.active {
-      background: var(--accent);
-      box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
-    }
-    
-    .btn-action {
-      background: var(--accent);
-      color: white;
-      margin-top: 12px;
-    }
-    
-    .btn-action:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    
-    .btn-secondary {
-      background: #475569;
-      color: white;
-      margin-top: 10px;
-    }
-    
-    .btn-danger {
-      background: #dc2626;
-      color: white;
-      margin-top: 12px;
-    }
-    
-    /* ===== ELEMENTOS DE INFORMACIÓN ===== */
-    .info-box {
-      background: #0f172a;
-      padding: 10px;
-      border-radius: 8px;
-      font-family: monospace;
-      font-size: 0.85rem;
-      word-break: break-all;
-      margin: 10px 0;
-      border: 1px dashed var(--border);
-      text-align: center;
-    }
-    
-    .qr-container {
-      display: flex;
-      justify-content: center;
-      margin: 10px 0;
-      background: white;
-      padding: 10px;
-      border-radius: 8px;
-      width: fit-content;
-      margin-inline: auto;
-    }
-    
-    /* ===== ESTADOS Y PROGRESO ===== */
-    .status {
-      margin-top: 12px;
-      padding: 10px;
-      border-radius: 8px;
-      text-align: center;
-      font-size: 0.9rem;
-    }
-    
-    .status.wait {
-      background: #1e293b;
-      color: #94a3b8;
-    }
-    
-    .status.ok {
-      background: #064e3b;
-      color: var(--success);
-    }
-    
-    .status.err {
-      background: #7f1d1d;
-      color: var(--error);
-    }
-    
-    .progress-container {
-      margin-top: 15px;
-      background: #0f172a;
-      border-radius: 10px;
-      padding: 12px;
-      display: none;
-    }
-    
-    .progress-bar {
-      height: 8px;
-      background: #334155;
-      border-radius: 4px;
-      overflow: hidden;
-      margin: 8px 0;
-    }
-    
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--success));
-      width: 0%;
-      transition: width 0.3s;
-    }
-    
-    .stats {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: #94a3b8;
-      margin-top: 5px;
-    }
-    
-    /* ===== LISTAS Y ARCHIVOS ===== */
-    .file-list {
-      max-height: 120px;
-      overflow-y: auto;
-      margin-top: 10px;
-      font-size: 0.85rem;
-      color: #cbd5e1;
-      border-top: 1px solid #334155;
-      padding-top: 8px;
-    }
-    
-    .file-item {
-      padding: 4px 0;
-      display: flex;
-      justify-content: space-between;
-    }
-    
-    .hidden {
-      display: none !important;
-    }
-    
-    .note {
-      font-size: 0.75rem;
-      color: #64748b;
-      margin-top: 6px;
-      text-align: center;
-    }
-    
-    .step-indicator {
-      text-align: center;
-      margin-bottom: 15px;
-      padding: 8px;
-      background: #0f172a;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      color: var(--accent);
-      font-weight: 600;
-    }
-    
-    .file-select-buttons {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin: 10px 0;
-    }
-    
-    /* ===== HISTORIAL ===== */
-    .history-container {
-      margin-top: 15px;
-      background: #0f172a;
-      border-radius: 10px;
-      padding: 10px;
-      max-height: 150px;
-      overflow-y: auto;
-    }
-    
-    .history-item {
-      padding: 6px 0;
-      border-bottom: 1px solid #1e293b;
-      font-size: 0.8rem;
-    }
-    
-    .history-item:last-child {
-      border-bottom: none;
-    }
-    
-    .history-time {
-      color: #64748b;
-      font-size: 0.75rem;
-    }
-    
-    /* ===== TOAST NOTIFICATIONS ===== */
-    .toast-container {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 1000;
-    }
-    
-    .toast {
-      background: var(--card);
-      border-left: 4px solid var(--accent);
-      padding: 12px 16px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      margin-bottom: 8px;
-      animation: slideIn 0.3s;
-    }
-    
-    .toast.success {
-      border-color: var(--success);
-    }
-    
-    .toast.error {
-      border-color: var(--error);
-    }
-    
-    @keyframes slideIn {
-      from { transform: translateX(100%); }
-      to { transform: translateX(0); }
+    /* Safari fixes */
+    @supports (-webkit-touch-callout: none) {
+      input[type="file"] { font-size: 16px; }
     }
   </style>
   
-  <!-- Prevenir caché -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 </head>
 <body>
-  <!-- Contenedor de notificaciones -->
   <div class="toast-container" id="toast-container"></div>
   
-  <!-- Contenedor principal -->
   <div class="container">
-    <h1>📡 Transferencia P2P</h1>
+    <div class="header-row">
+      <h1>📡 Transferencia P2P</h1>
+      <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
+    </div>
+    
     <div class="step-indicator" id="step-indicator">Paso 1: Selecciona tu rol</div>
 
-    <!-- Paso 1: Selección de rol -->
     <div id="role-selection">
       <div class="row">
         <button class="btn-role" id="btn-send" onclick="setRole('send')">📤 Emisor</button>
@@ -325,7 +134,6 @@
       </div>
     </div>
 
-    <!-- Paso 2: Autenticación (Emisor) -->
     <div id="sender-auth" class="hidden">
       <input type="text" id="sender-id" placeholder="Tu ID (6-32 caracteres)" maxlength="32">
       <input type="password" id="sender-password" placeholder="Contraseña (opcional)">
@@ -333,7 +141,6 @@
       <button class="btn-action" onclick="setupSender()">Continuar →</button>
     </div>
 
-    <!-- Paso 2: Conexión (Receptor) -->
     <div id="receiver-auth" class="hidden">
       <input type="text" id="receiver-target-id" placeholder="ID del emisor">
       <input type="password" id="receiver-password" placeholder="Contraseña">
@@ -341,18 +148,23 @@
       <button class="btn-action" onclick="connectToSender()">🔗 Conectar</button>
     </div>
 
-    <!-- Paso 3: UI del Emisor -->
     <div id="sender-ui" class="hidden">
       <div class="info-box" id="my-id-display"></div>
       <div class="qr-container" id="qr-code"></div>
       <button class="btn-secondary" onclick="copyId()">📋 Copiar ID</button>
       <div class="note">Escanea o comparte el ID</div>
       
+      <!-- Drag & Drop Zone -->
+      <div class="drop-zone" id="drop-zone">
+        <p>📁 Arrastra archivos o carpetas aquí</p>
+        <p style="font-size:0.7rem; opacity:0.7">o</p>
+      </div>
+      
       <div class="file-select-buttons">
         <input type="file" id="file-input" multiple style="display:none" onchange="handleFilesSelected()">
         <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none" onchange="handleFilesSelected()">
-        <button class="btn-action" onclick="document.getElementById('file-input').click()">📄 Archivos</button>
-        <button class="btn-secondary" onclick="document.getElementById('folder-input').click()">📂 Carpeta</button>
+        <button class="btn-action" onclick="document.getElementById('file-input').click()">📄 Seleccionar Archivos</button>
+        <button class="btn-secondary" onclick="document.getElementById('folder-input').click()">📂 Seleccionar Carpeta</button>
       </div>
       
       <div id="files-selected" class="hidden">
@@ -361,7 +173,6 @@
       </div>
     </div>
 
-    <!-- Barra de progreso -->
     <div class="progress-container" id="progress-ui">
       <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
         <span id="progress-file">Esperando...</span>
@@ -375,28 +186,22 @@
       <div class="file-list" id="file-log"></div>
     </div>
 
-    <!-- Historial -->
     <div class="history-container hidden" id="history-ui">
-      <div style="font-weight:600; margin-bottom:8px; color:#94a3b8;">📋 Historial</div>
+      <div style="font-weight:600; margin-bottom:8px; color:var(--text); opacity:0.8;">📋 Historial</div>
       <div id="history-list"></div>
     </div>
 
-    <!-- Estado global -->
     <div id="status" class="status wait">⏳ Selecciona Emisor o Receptor</div>
     <button class="btn-danger" onclick="hardReset()">🗑️ Reiniciar</button>
   </div>
 
   <script>
-    // ========================================================================
-    // CONFIGURACIÓN GLOBAL
-    // ========================================================================
-    const CHUNK_SIZE = 256 * 1024; // 256KB por chunk
+    const CHUNK_SIZE = 256 * 1024;
     const DB_NAME = 'P2PTransferDB';
     const SESSION_KEY = 'p2p_final';
     const HISTORY_KEY = 'p2p_hist_final';
-
-    // Variables de estado
-    let peer, conn, role = null, files = [];
+    
+    let peer, conn, role = null, files = [], selectedFolders = new Set();
     let transferId, startTime, bytesTransferred = 0;
     let currentPassword = '';
     let receiverConnected = false;
@@ -405,10 +210,8 @@
     let receiverStartTime = 0;
     let receiverTotalSize = 0;
     let receivedFiles = {};
+    let isDarkMode = true;
 
-    // ========================================================================
-    // BASE DE DATOS LOCAL (IndexedDB)
-    // ========================================================================
     const dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, 1);
       req.onupgradeneeded = e => e.target.result.createObjectStore('transferState', { keyPath: 'id' });
@@ -422,27 +225,14 @@
         const tx = db.transaction('transferState', 'readwrite');
         await tx.objectStore('transferState').clear();
         localStorage.removeItem(SESSION_KEY);
-      } catch (e) {
-        console.error('Error limpiando estado:', e);
-      }
+      } catch (e) { console.error('Clear error:', e); }
     }
 
-    // ========================================================================
-    // FIX #2: Escape HTML para prevenir XSS
-    // ========================================================================
     function escapeHtml(str) {
       if (!str) return '';
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
-    // ========================================================================
-    // HISTORIAL DE TRANSFERENCIAS
-    // ========================================================================
     function saveHistory(entry) {
       let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
       history.unshift(entry);
@@ -454,103 +244,81 @@
     function renderHistory() {
       const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
       const list = document.getElementById('history-list');
-      
       if (history.length === 0) {
-        list.innerHTML = '<div style="color:#64748b">Sin transferencias</div>';
+        list.innerHTML = '<div style="color:var(--text); opacity:0.7">Sin transferencias</div>';
         return;
       }
-      
-      // FIX #2: Usar escapeHtml para prevenir XSS
       list.innerHTML = history.map(h => `
         <div class="history-item">
           <div style="display:flex; justify-content:space-between;">
             <span>${h.type === 'send' ? '📤' : '📥'} ${escapeHtml(h.fileName)}</span>
             <span class="history-time">${escapeHtml(h.time)}</span>
           </div>
-          <div style="color:#64748b; font-size:0.75rem;">
+          <div style="color:var(--text); opacity:0.7; font-size:0.75rem;">
             ${escapeHtml(h.size)} • ${escapeHtml(h.duration)}
           </div>
         </div>
       `).join('');
-      
       document.getElementById('history-ui').classList.remove('hidden');
     }
 
-    // ========================================================================
-    // SONIDO DE COMPLETADO
-    // ========================================================================
     function playCompleteSound() {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        
-        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1); // E5
-        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2); // G5
-        
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2);
         gain.gain.setValueAtTime(0.3, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-        
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.5);
-      } catch (e) {
-        console.error('Error reproduciendo sonido:', e);
-      }
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+      } catch (e) {}
     }
 
-    // ========================================================================
-    // NOTIFICACIONES TOAST
-    // ========================================================================
     function showToast(msg, type = 'info') {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
       toast.className = `toast ${type}`;
       toast.textContent = msg;
       container.appendChild(toast);
-      
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-      }, 3000);
+      setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
     }
 
-    // ========================================================================
-    // FIX #7: peer.destroy() en hardReset
-    // ========================================================================
     function hardReset() {
-      if (confirm('⚠️ ¿Borrar todo y reiniciar?')) {
-        // Cerrar conexión PeerJS primero
-        if (peer && !peer.destroyed) {
-          peer.destroy();
-        }
+      if (confirm('⚠️ ¿Borrar todo?')) {
+        if (peer && !peer.destroyed) peer.destroy();
         clearAllState();
         localStorage.removeItem(HISTORY_KEY);
         location.reload();
       }
     }
 
-    // ========================================================================
-    // FLUJO DE ROLES
-    // ========================================================================
+    // === NUEVO: Toggle tema claro/oscuro ===
+    function toggleTheme() {
+      isDarkMode = !isDarkMode;
+      document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+      localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+      showToast(isDarkMode ? '🌙 Modo oscuro' : '☀️ Modo claro', 'success');
+    }
+
+    // Cargar tema guardado
+    function loadTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'light') {
+        isDarkMode = false;
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    }
+
     function setRole(r) {
       role = r;
-      
-      // Actualizar botones de rol
       document.getElementById('btn-send').classList.toggle('active', r === 'send');
       document.getElementById('btn-receive').classList.toggle('active', r === 'receive');
-      
-      // Ocultar selección de rol
       document.getElementById('role-selection').classList.add('hidden');
+      document.getElementById('step-indicator').textContent = `Paso 2: ${r === 'send' ? 'Configura tu ID' : 'Conéctate'}`;
       
-      // Actualizar indicador de paso
-      document.getElementById('step-indicator').textContent = 
-        `Paso 2: ${r === 'send' ? 'Configura tu ID' : 'Conéctate'}`;
-      
-      // Mostrar panel correspondiente
       if (r === 'send') {
         document.getElementById('sender-auth').classList.remove('hidden');
         setStatus('🔐 Ingresa tu ID', 'wait');
@@ -564,44 +332,30 @@
       const idInput = document.getElementById('sender-id').value.trim();
       const pwd = document.getElementById('sender-password').value;
       
-      // Validar ID
-      if (idInput.length < 6 || idInput.length > 32) {
-        return showToast('❌ ID: 6-32 caracteres', 'error');
-      }
-      if (!/^[a-zA-Z0-9_-]+$/.test(idInput)) {
-        return showToast('❌ Solo letras, números y guiones', 'error');
-      }
+      if (idInput.length < 6 || idInput.length > 32) return showToast('❌ ID: 6-32 caracteres', 'error');
+      if (!/^[a-zA-Z0-9_-]+$/.test(idInput)) return showToast('❌ Solo letras, números y guiones', 'error');
       
       transferId = `p2p-${idInput}`;
       currentPassword = pwd;
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ role: 'send', id: idInput, timestamp: Date.now(), hadPwd: !!pwd }));
       
-      // FIX #1: NO guardar contraseña en localStorage
-      // Solo guardar ID y marcar si tenía contraseña
-      localStorage.setItem(SESSION_KEY, JSON.stringify({
-        role: 'send',
-        id: idInput,
-        timestamp: Date.now(),
-        hadPwd: !!pwd  // Solo guardar SI tenía contraseña, no la contraseña misma
-      }));
-      
-      // Mostrar UI del emisor
       document.getElementById('sender-auth').classList.add('hidden');
       document.getElementById('sender-ui').classList.remove('hidden');
       document.getElementById('my-id-display').textContent = `Tu ID: ${idInput}`;
       document.getElementById('step-indicator').textContent = 'Paso 3: Selecciona archivos';
       
-      // Generar código QR
       document.getElementById('qr-code').innerHTML = '';
-      new QRCode(document.getElementById('qr-code'), {
-        text: idInput,
-        width: 120,
-        height: 120,
-        colorDark: "#0f172a",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.L
-      });
+      if (typeof QRCode !== 'undefined') {
+        new QRCode(document.getElementById('qr-code'), {
+          text: idInput, width: 120, height: 120,
+          colorDark: isDarkMode ? "#0f172a" : "#1e293b",
+          colorLight: isDarkMode ? "#ffffff" : "#f8fafc",
+          correctLevel: QRCode.CorrectLevel.L
+        });
+      }
       
       initPeer();
+      setupDragDrop();
     }
 
     function setStatus(msg, type = 'wait') {
@@ -612,39 +366,94 @@
 
     function updateProgress(percent, fileName, speed, eta) {
       document.getElementById('progress-ui').style.display = 'block';
-      document.getElementById('progress-fill').style.width = 
-        `${Math.min(100, Math.max(0, percent))}%`;
-      document.getElementById('progress-percent').textContent = 
-        `${Math.min(100, Math.max(0, percent)).toFixed(1)}%`;
+      document.getElementById('progress-fill').style.width = `${Math.min(100, Math.max(0, percent))}%`;
+      document.getElementById('progress-percent').textContent = `${Math.min(100, Math.max(0, percent)).toFixed(1)}%`;
       document.getElementById('progress-file').textContent = fileName;
       document.getElementById('progress-speed').textContent = speed;
       document.getElementById('progress-eta').textContent = eta;
     }
 
-    // FIX #2: escapeHtml en logFile para prevenir XSS
     function logFile(msg) {
       const log = document.getElementById('file-log');
       log.innerHTML += `<div class="file-item">${escapeHtml(msg)}</div>`;
       log.scrollTop = log.scrollHeight;
     }
 
+    // === NUEVO: Drag & Drop ===
+    function setupDragDrop() {
+      const dropZone = document.getElementById('drop-zone');
+      
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, e => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+      
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'));
+      });
+      
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'));
+      });
+      
+      dropZone.addEventListener('drop', e => {
+        const dt = e.dataTransfer;
+        const items = dt.items;
+        
+        if (items) {
+          // Detectar si son carpetas
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].webkitGetAsEntry && items[i].webkitGetAsEntry().isDirectory) {
+              selectedFolders.add(items[i].webkitGetAsEntry().name);
+            }
+          }
+        }
+        
+        handleFilesSelectedFromDrop(dt.files);
+      });
+      
+      // Click en drop zone abre selector
+      dropZone.addEventListener('click', () => {
+        if (selectedFolders.size > 0) {
+          document.getElementById('folder-input').click();
+        } else {
+          document.getElementById('file-input').click();
+        }
+      });
+    }
+
+    function handleFilesSelectedFromDrop(fileList) {
+      files = Array.from(fileList);
+      processSelectedFiles();
+    }
+
     function handleFilesSelected() {
       const fileInput = document.getElementById('file-input');
       const folderInput = document.getElementById('folder-input');
-      
-      // Combinar archivos y carpetas
       files = Array.from(fileInput.files).concat(Array.from(folderInput.files));
-      files = files.sort((a, b) => 
-        (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name)
-      );
+      
+      // Detectar carpetas seleccionadas
+      files.forEach(f => {
+        if (f.webkitRelativePath && f.webkitRelativePath.includes('/')) {
+          const folder = f.webkitRelativePath.split('/')[0];
+          selectedFolders.add(folder);
+        }
+      });
+      
+      processSelectedFiles();
+    }
+
+    function processSelectedFiles() {
+      files = files.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
       
       if (files.length > 0) {
         filesReady = true;
         document.getElementById('files-selected').classList.remove('hidden');
-        
-        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-        document.getElementById('files-count').textContent = 
-          `📦 ${files.length} archivo(s) - ${formatSize(totalSize)}`;
+        const totalSize = files.reduce((s, f) => s + f.size, 0);
+        const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
+        document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
         
         if (receiverConnected) {
           setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
@@ -664,45 +473,21 @@
 
     function copyId() {
       const id = document.getElementById('sender-id').value;
-      const text = currentPassword 
-        ? `ID: ${id}\nContraseña: ${currentPassword}` 
-        : `ID: ${id}`;
-      
-      navigator.clipboard.writeText(text).then(() => 
-        showToast('📋 Copiado', 'success')
-      );
+      const text = currentPassword ? `ID: ${id}\nContraseña: ${currentPassword}` : `ID: ${id}`;
+      navigator.clipboard.writeText(text).then(() => showToast('📋 Copiado', 'success'));
     }
 
-    // ========================================================================
-    // CONEXIÓN PEERJS (LÓGICA DE v4.3 QUE SÍ FUNCIONA)
-    // ========================================================================
+    // === CONEXIÓN (Lógica probada de v4.3) ===
     function setupConnection() {
-      // Listener de datos para receptor (fuera de 'open')
-      conn.on('data', data => {
-        if (role === 'receive') {
-          handleReceiverData(data);
-        }
-      });
+      conn.on('data', data => { if (role === 'receive') handleReceiverData(data); });
+      conn.on('error', err => { setStatus(`❌ Error: ${err}`, 'err'); showToast('❌ Error de conexión', 'error'); });
+      conn.on('close', () => { receiverConnected = false; setStatus('🔌 Desconectado', 'wait'); });
       
-      // FIX #4: Error handler para data channel
-      conn.on('error', err => {
-        setStatus(`❌ Error de canal: ${err}`, 'err');
-        showToast('❌ Error en la conexión de datos', 'error');
-      });
-      
-      conn.on('close', () => {
-        receiverConnected = false;
-        setStatus('🔌 Desconectado', 'wait');
-      });
-      
-      // Cuando la conexión se abre
       conn.on('open', () => {
         if (role === 'send') {
-          // Emisor: registrar listener DENTRO de open
           conn.on('data', handleSenderData);
           setStatus('🔐 Esperando autenticación...', 'wait');
         } else {
-          // Receptor: enviar auth inmediatamente
           conn.send({ type: 'auth', password: currentPassword });
           setStatus('🔐 Autenticando...', 'wait');
         }
@@ -711,22 +496,16 @@
 
     function handleSenderData(data) {
       if (data.type === 'auth') {
-        // Verificar contraseña
         if (currentPassword && data.password !== currentPassword) {
           conn.send({ type: 'auth_fail' });
           setTimeout(() => conn.close(), 100);
           return showToast('❌ Contraseña incorrecta', 'error');
         }
-        
-        // Autenticación exitosa
         conn.send({ type: 'auth_ok' });
         receiverConnected = true;
         setStatus('✅ Receptor conectado', 'ok');
         showToast('🔗 Conectado', 'success');
-        
-        if (filesReady) {
-          setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
-        }
+        if (filesReady) setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
       }
     }
 
@@ -740,105 +519,61 @@
         receiverStartTime = Date.now();
         receiverBytesReceived = 0;
         receivedFiles = {};
-      } 
-      else if (data.type === 'auth_fail') {
+      } else if (data.type === 'auth_fail') {
         showToast('❌ Contraseña incorrecta', 'error');
         conn.close();
-      } 
-      else if (data.type === 'file_info') {
+      } else if (data.type === 'file_info') {
         handleFileInfo(data);
-      } 
-      else if (data.type === 'chunk') {
+      } else if (data.type === 'chunk') {
         handleChunk(data);
-      } 
-      else if (data.type === 'complete') {
+      } else if (data.type === 'complete') {
         finalizeFile(data.fileName);
       }
     }
 
     function initPeer() {
-      // SIN configuración manual de ICE (usa defaults que funcionan)
       peer = new Peer(transferId, { debug: 0 });
-      
-      peer.on('open', (id) => {
-        setStatus('🟢 Listo. Esperando...', 'ok');
-        showToast('✅ Listo', 'success');
-      });
-
-      peer.on('connection', c => {
-        conn = c;
-        setupConnection();
-      });
-
+      peer.on('open', () => { setStatus('🟢 Listo. Esperando...', 'ok'); showToast('✅ Listo', 'success'); });
+      peer.on('connection', c => { conn = c; setupConnection(); });
       peer.on('error', err => {
-        if (err.type === 'unavailable-id') {
-          setStatus('🔒 ID en uso', 'err');
-          showToast('❌ ID ya existe', 'error');
-        } else {
-          setStatus(`❌ Error: ${err.type}`, 'err');
-        }
+        if (err.type === 'unavailable-id') { setStatus('🔒 ID en uso', 'err'); showToast('❌ ID ya existe', 'error'); }
+        else { setStatus(`❌ Error: ${err.type}`, 'err'); }
       });
     }
 
     function connectToSender() {
       const targetId = document.getElementById('receiver-target-id').value.trim();
       const pwd = document.getElementById('receiver-password').value;
-      
-      if (!targetId || targetId.length < 6) {
-        return showToast('❌ ID inválido', 'error');
-      }
+      if (!targetId || targetId.length < 6) return showToast('❌ ID inválido', 'error');
       
       currentPassword = pwd;
       const target = `p2p-${targetId}`;
-      
       setStatus('🔄 Conectando...', 'wait');
       
-      // SIN configuración manual de ICE
       peer = new Peer({ debug: 0 });
-      
-      peer.on('open', () => {
-        setStatus('🔄 Conectando...', 'wait');
-        conn = peer.connect(target);
-        setupConnection();
-      });
-      
+      peer.on('open', () => { setStatus('🔄 Conectando...', 'wait'); conn = peer.connect(target); setupConnection(); });
       peer.on('error', err => {
-        if (err.type === 'peer-unavailable') {
-          setStatus('❌ Emisor no encontrado', 'err');
-          showToast('❌ Verifica el ID', 'error');
-        } else {
-          setStatus(`❌ Error: ${err.type}`, 'err');
-        }
+        if (err.type === 'peer-unavailable') { setStatus('❌ Emisor no encontrado', 'err'); showToast('❌ Verifica el ID', 'error'); }
+        else { setStatus(`❌ Error: ${err.type}`, 'err'); }
       });
     }
 
-    // ========================================================================
-    // TRANSFERENCIA DE ARCHIVOS
-    // ========================================================================
     async function startTransfer() {
-      if (!files.length || !filesReady) {
-        return showToast('❌ Selecciona archivos', 'error');
-      }
-      if (!conn || !conn.open) {
-        return showToast('❌ Sin conexión', 'error');
-      }
-      if (!receiverConnected) {
-        return showToast('⏳ Esperando receptor...', 'info');
-      }
+      if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
+      if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
+      if (!receiverConnected) return showToast('⏳ Esperando receptor...', 'info');
       
       startTime = Date.now();
       bytesTransferred = 0;
-      
       document.getElementById('btn-start').disabled = true;
       document.getElementById('btn-start').textContent = '⏳ Enviando...';
       setStatus('📤 Iniciando...', 'wait');
       
-      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      const totalSize = files.reduce((s, f) => s + f.size, 0);
       
-      // Enviar cada archivo
       for (let i = 0; i < files.length; i++) {
         await sendFile(files[i], i, totalSize);
-        await new Promise(r => setTimeout(r, 200)); // Pausa entre archivos
+        await new Promise(r => setTimeout(r, 200));
       }
       
       const duration = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -847,15 +582,7 @@
       document.getElementById('btn-start').textContent = '✅ OK';
       document.getElementById('btn-start').disabled = false;
       
-      // Guardar en historial
-      files.forEach(f => saveHistory({
-        type: 'send',
-        fileName: f.webkitRelativePath || f.name,
-        size: formatSize(f.size),
-        time: new Date().toLocaleString(),
-        duration: `${duration}s`
-      }));
-      
+      files.forEach(f => saveHistory({ type: 'send', fileName: f.webkitRelativePath || f.name, size: formatSize(f.size), time: new Date().toLocaleString(), duration: `${duration}s` }));
       playCompleteSound();
       await clearAllState();
     }
@@ -863,205 +590,147 @@
     async function sendFile(file, index, totalSize) {
       const fileName = file.webkitRelativePath || file.name;
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-      
       logFile(`📤 ${fileName} (${formatSize(file.size)})`);
       
-      // Enviar información del archivo
-      conn.send({
-        type: 'file_info',
-        fileName: fileName,
-        fileSize: file.size,
-        totalChunks: totalChunks,
-        fileId: `${file.name}-${file.size}-${index}`,
-        totalFilesSize: totalSize
-      });
-      
+      conn.send({ type: 'file_info', fileName, fileSize: file.size, totalChunks, fileId: `${file.name}-${file.size}-${index}`, totalFilesSize: totalSize });
       await new Promise(r => setTimeout(r, 100));
       
-      // Enviar chunks
       for (let c = 0; c < totalChunks; c++) {
         const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
         const buffer = await chunk.arrayBuffer();
-        
-        // ✅ FIX CRÍTICO: data: buffer (NO shorthand "buffer")
-        conn.send({
-          type: 'chunk',
-          fileId: `${file.name}-${file.size}-${index}`,
-          index: c,
-          data: buffer,
-          total: totalChunks
-        });
-        
+        conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c, data: buffer, total: totalChunks });
         bytesTransferred += buffer.byteLength;
         
-        // Calcular progreso
         const fileProgress = (c + 1) / totalChunks;
         const overallProgress = ((index + fileProgress) / files.length) * 100;
-        
         const now = Date.now();
         const elapsed = (now - startTime) / 1000 || 1;
         const speed = bytesTransferred / elapsed;
         const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
         
-        const speedStr = speed > 1048576 
-          ? `${(speed / 1048576).toFixed(1)} MB/s` 
-          : `${(speed / 1024).toFixed(0)} KB/s`;
-        
-        const etaStr = remaining > 86400 || remaining < 0 
-          ? '⏳ --:--' 
-          : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+        const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
+        const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
         
         updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
-        
-        // Control de flujo (backpressure)
-        if (conn.bufferedAmount > 4 * 1024 * 1024) {
-          await new Promise(r => setTimeout(r, 300));
-        } else {
-          await new Promise(r => setTimeout(r, 50));
-        }
+        if (conn.bufferedAmount > 4 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
+        else await new Promise(r => setTimeout(r, 50));
       }
       
-      // Asegurar 100% al finalizar último archivo
-      if (index === files.length - 1) {
-        updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
-      }
-      
+      if (index === files.length - 1) updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
       await new Promise(r => setTimeout(r, 200));
-      conn.send({ type: 'complete', fileName: fileName });
+      conn.send({ type: 'complete', fileName });
       logFile(`✅ ${fileName} enviado`);
     }
 
-    // ========================================================================
-    // RECEPCIÓN DE ARCHIVOS
-    // ========================================================================
     function handleFileInfo(data) {
-      receivedFiles[data.fileId] = {
-        name: data.fileName,
-        size: data.fileSize,
-        totalChunks: data.totalChunks,
-        chunks: new Array(data.totalChunks),
-        received: 0
-      };
+      receivedFiles[data.fileId] = { name: data.fileName, size: data.fileSize, totalChunks: data.totalChunks, chunks: new Array(data.totalChunks), received: 0 };
       receiverTotalSize = data.totalFilesSize || data.fileSize;
       logFile(`📥 ${data.fileName}`);
       updateReceiverProgress(data.fileName, 0);
-      
-      // FIX #3: Manejar archivos de 0 bytes
-      if (data.totalChunks === 0) {
-        downloadFile(receivedFiles[data.fileId]);
-      }
+      if (data.totalChunks === 0) downloadFile(receivedFiles[data.fileId]);
     }
 
     function handleChunk(data) {
-      const fileData = receivedFiles[data.fileId];
-      if (!fileData || fileData.chunks[data.index] !== undefined) return;
-      
-      fileData.chunks[data.index] = data.data;
-      fileData.received++;
+      const fd = receivedFiles[data.fileId];
+      if (!fd || fd.chunks[data.index] !== undefined) return;
+      fd.chunks[data.index] = data.data;
+      fd.received++;
       receiverBytesReceived += data.data.byteLength;
-      
-      const progress = (fileData.received / fileData.totalChunks) * 100;
-      updateReceiverProgress(fileData.name, progress);
-      
-      if (fileData.received === fileData.totalChunks) {
-        logFile(`✓ ${fileData.name}: Descargando...`);
-        downloadFile(fileData);
-      }
+      updateReceiverProgress(fd.name, (fd.received / fd.totalChunks) * 100);
+      if (fd.received === fd.totalChunks) { logFile(`✓ ${fd.name}: Descargando...`); downloadFile(fd); }
     }
 
-    function downloadFile(fileData) {
+    // === NUEVO: Descarga con ZIP para carpetas ===
+    async function downloadFile(fileData) {
       try {
         const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
-        
-        if (validChunks.length !== fileData.totalChunks) {
-          logFile(`❌ Faltan chunks (${validChunks.length}/${fileData.totalChunks})`);
-          return;
-        }
+        if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
         
         const blob = new Blob(validChunks);
-        if (!blob.size) {
-          logFile('❌ Blob vacío');
+        if (!blob.size) { logFile('❌ Blob vacío'); return; }
+        
+        // === LÓGICA ZIP PARA CARPETAS ===
+        let downloadName = fileData.name;
+        let downloadBlob = blob;
+        
+        // Verificar si es parte de una carpeta
+        if (fileData.name.includes('/')) {
+          const folderName = fileData.name.split('/')[0];
+          
+          // Si es la primera vez que procesamos esta carpeta, inicializar ZIP
+          if (!window.zipBuilders) window.zipBuilders = {};
+          if (!window.zipBuilders[folderName]) {
+            window.zipBuilders[folderName] = { zip: new JSZip(), files: 0, total: 0 };
+          }
+          
+          const builder = window.zipBuilders[folderName];
+          builder.files++;
+          
+          // Añadir archivo al ZIP
+          builder.zip.file(fileData.name, blob);
+          
+          // Si es el último archivo de la carpeta, generar y descargar ZIP
+          if (builder.files >= countFilesInFolder(folderName)) {
+            const zipBlob = await builder.zip.generateAsync({ type: 'blob' });
+            saveAs(zipBlob, `${folderName}.zip`);
+            logFile(`✅ 📦 ${folderName}.zip descargado`);
+            delete window.zipBuilders[folderName];
+          }
           return;
         }
+        // === FIN LÓGICA ZIP ===
         
-        // Descargar archivo
+        // Descarga normal para archivos individuales
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = fileData.name;
-        document.body.appendChild(a);
-        a.click();
+        a.href = url; a.download = downloadName;
+        document.body.appendChild(a); a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        logFile(`✅ ${downloadName} descargado (${formatSize(blob.size)})`);
         
-        // Liberar memoria
         fileData.chunks = null;
         delete receivedFiles[Object.keys(receivedFiles).find(k => receivedFiles[k] === fileData)];
         
-        logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
-        
-        // FIX #6: Mover finalizeFile al final de downloadFile
         if (Object.keys(receivedFiles).length === 0) {
           const duration = ((Date.now() - receiverStartTime) / 1000).toFixed(1);
           setStatus(`🎉 Completado en ${duration}s`, 'ok');
           playCompleteSound();
-          saveHistory({
-            type: 'receive',
-            fileName: fileData.name,
-            size: formatSize(fileData.size),
-            time: new Date().toLocaleString(),
-            duration: `${duration}s`
-          });
+          saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
         }
-      } catch (e) {
-        logFile(`❌ Error: ${e.message}`);
-        console.error('Download error:', e);
-      }
+      } catch (e) { logFile(`❌ Error: ${e.message}`); console.error('Download error:', e); }
     }
 
-    // FIX #6: finalizeFile ahora solo para compatibilidad
-    function finalizeFile(fileName) {
-      // Log ya se muestra en downloadFile para orden correcto
+    // Helper para contar archivos en una carpeta
+    function countFilesInFolder(folderName) {
+      return files.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/')).length;
     }
+
+    function finalizeFile(fileName) { /* log movido a downloadFile */ }
 
     function updateReceiverProgress(fileName, percent) {
       const now = Date.now();
       const elapsed = (now - receiverStartTime) / 1000 || 1;
       const speed = receiverBytesReceived / elapsed;
-      const remaining = speed > 0 && receiverTotalSize > receiverBytesReceived 
-        ? (receiverTotalSize - receiverBytesReceived) / speed 
-        : 0;
-      
-      const speedStr = speed > 1048576 
-        ? `${(speed / 1048576).toFixed(1)} MB/s` 
-        : `${(speed / 1024).toFixed(0)} KB/s`;
-      
-      const etaStr = remaining > 86400 || remaining < 0 || elapsed < 1
-        ? '⏳ --:--' 
-        : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-      
+      const remaining = speed > 0 && receiverTotalSize > receiverBytesReceived ? (receiverTotalSize - receiverBytesReceived) / speed : 0;
+      const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
+      const etaStr = remaining > 86400 || remaining < 0 || elapsed < 1 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
       updateProgress(percent, fileName, speedStr, etaStr);
     }
 
-    // ========================================================================
-    // INICIALIZACIÓN
-    // ========================================================================
     window.onload = async () => {
+      loadTheme();
       renderHistory();
-      
       const saved = localStorage.getItem(SESSION_KEY);
       if (saved) {
         const session = JSON.parse(saved);
-        const age = (Date.now() - session.timestamp) / 1000 / 60 / 60; // horas
-        
-        // FIX #1: Si la sesión tenía contraseña, NO restaurar automáticamente
+        const age = (Date.now() - session.timestamp) / 1000 / 60 / 60;
         if (age < 1 && session.role === 'send' && !session.hadPwd) {
           document.getElementById('sender-id').value = session.id;
           setRole('send');
           setupSender();
           setStatus('🔄 Sesión restaurada', 'wait');
         } else {
-          // Limpiar sesión inválida o con contraseña
           localStorage.removeItem(SESSION_KEY);
           await clearAllState();
         }
