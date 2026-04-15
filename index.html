@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comparte Archivos P2P - v3</title>
+  <title>Comparte Archivos P2P - v4</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root { --bg: #0b1120; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; --error: #ef4444; --warn: #f59e0b; }
@@ -36,6 +36,10 @@
     .note { font-size: 0.75rem; color: #64748b; margin-top: 5px; text-align: center; }
     .step-indicator { text-align: center; margin-bottom: 15px; padding: 8px; background: #0f172a; border-radius: 6px; font-size: 0.9rem; }
     .file-select-buttons { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+    .history-container { margin-top: 15px; background: #0f172a; border-radius: 8px; padding: 10px; max-height: 200px; overflow-y: auto; }
+    .history-item { padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 0.8rem; }
+    .history-item:last-child { border-bottom: none; }
+    .history-time { color: #64748b; font-size: 0.75rem; }
   </style>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -104,6 +108,12 @@
       <div class="file-list" id="file-log"></div>
     </div>
 
+    <!-- HISTORIAL -->
+    <div class="history-container hidden" id="history-ui">
+      <div style="font-weight:600; margin-bottom:8px; color:#94a3b8;">📋 Historial de Transferencias</div>
+      <div id="history-list"></div>
+    </div>
+
     <div id="status" class="status wait">⏳ Selecciona si eres Emisor o Receptor</div>
     <button class="btn-danger" onclick="hardReset()">🗑️ Borrar Todo y Reiniciar</button>
   </div>
@@ -113,7 +123,8 @@
     const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB por chunk
     const DB_NAME = 'P2PTransferDB';
     const STORE_NAME = 'transferState';
-    const SESSION_KEY = 'p2p_session_v3';
+    const SESSION_KEY = 'p2p_session_v4';
+    const HISTORY_KEY = 'p2p_history_v4';
     
     let peer, conn, role = null, files = [], currentFileIndex = 0;
     let transferId, sentChunks = new Set();
@@ -121,6 +132,12 @@
     let currentPassword = '';
     let receiverConnected = false;
     let filesReady = false;
+    let transferComplete = false;
+    
+    // Para el receptor
+    let receiverBytesReceived = 0;
+    let receiverStartTime = 0;
+    let receiverTotalSize = 0;
 
     // --- INDEXEDDB ---
     const dbPromise = new Promise((resolve, reject) => {
@@ -158,10 +175,66 @@
       } catch(e) { console.error('Clear error:', e); }
     }
 
+    // --- HISTORIAL ---
+    function saveHistory(entry) {
+      try {
+        let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        history.unshift(entry);
+        if (history.length > 20) history = history.slice(0, 20); // Máximo 20 entradas
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        renderHistory();
+      } catch(e) { console.error('History error:', e); }
+    }
+
+    function renderHistory() {
+      const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      const list = document.getElementById('history-list');
+      
+      if (history.length === 0) {
+        list.innerHTML = '<div style="color:#64748b; font-size:0.8rem;">Sin transferencias aún</div>';
+        return;
+      }
+      
+      list.innerHTML = history.map(h => `
+        <div class="history-item">
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:#cbd5e1;">${h.type === 'send' ? '📤 Enviado' : '📥 Recibido'}: ${h.fileName}</span>
+            <span class="history-time">${h.time}</span>
+          </div>
+          <div style="color:#64748b; font-size:0.75rem;">${h.size} • ${h.duration || 'N/A'}</div>
+        </div>
+      `).join('');
+      
+      document.getElementById('history-ui').classList.remove('hidden');
+    }
+
+    // --- SONIDO ---
+    function playCompleteSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+        oscillator.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+        oscillator.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+        
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.5);
+      } catch(e) { console.error('Sound error:', e); }
+    }
+
     // --- HARD RESET ---
     function hardReset() {
       if (confirm('⚠️ Esto borrará TODOS los datos guardados y reiniciará la app. ¿Continuar?')) {
         clearAllState();
+        localStorage.removeItem(HISTORY_KEY);
         location.reload();
       }
     }
@@ -376,6 +449,7 @@
         document.getElementById('receiver-auth').classList.add('hidden');
         document.getElementById('progress-ui').style.display = 'block';
         document.getElementById('step-indicator').textContent = 'Recibiendo archivos...';
+        receiverStartTime = Date.now();
       } else if (data.type === 'auth_fail') {
         setStatus('❌ Contraseña incorrecta', 'err');
         conn.close();
@@ -406,24 +480,46 @@
       sentChunks.clear();
       startTime = Date.now();
       bytesTransferred = 0;
+      transferComplete = false;
       
       document.getElementById('btn-start').disabled = true;
       document.getElementById('btn-start').textContent = '⏳ Enviando...';
       
       setStatus('📤 Iniciando transferencia...', 'wait');
       
+      // Calcular tamaño total
+      const totalSize = files.reduce((a, f) => a + f.size, 0);
+      
       // Enviar cada archivo
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        await sendFile(file, i);
+        await sendFile(file, i, totalSize);
       }
       
-      setStatus('🎉 ¡Transferencia completada!', 'ok');
+      // Transferencia completada
+      transferComplete = true;
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      
+      setStatus(`🎉 ¡Transferencia completada en ${duration}s!`, 'ok');
       document.getElementById('btn-start').textContent = '✅ Completado';
+      document.getElementById('btn-start').disabled = false;
+      
+      // Guardar en historial
+      files.forEach(f => {
+        saveHistory({
+          type: 'send',
+          fileName: f.webkitRelativePath || f.name,
+          size: formatSize(f.size),
+          time: new Date().toLocaleString(),
+          duration: `${duration}s`
+        });
+      });
+      
+      playCompleteSound();
       await clearAllState();
     }
 
-    async function sendFile(file, index) {
+    async function sendFile(file, index, totalSize) {
       const fileName = file.webkitRelativePath || file.name;
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       
@@ -435,7 +531,8 @@
         fileName: fileName,
         fileSize: file.size,
         totalChunks: totalChunks,
-        fileId: `${file.name}-${file.size}-${index}`
+        fileId: `${file.name}-${file.size}-${index}`,
+        totalFilesSize: totalSize // Para que el receptor sepa el total
       });
       
       // Enviar chunks
@@ -447,20 +544,37 @@
           type: 'chunk',
           fileId: `${file.name}-${file.size}-${index}`,
           index: c,
-          data: buffer,
+           buffer,
           total: totalChunks
         });
         
         sentChunks.add(`${file.name}-${c}`);
         bytesTransferred += buffer.byteLength;
         
-        const progress = ((index + (c / totalChunks)) / files.length) * 100;
-        updateProgressUI(fileName, progress);
+        // Calcular progreso corregido para el emisor
+        const fileProgress = (c + 1) / totalChunks;
+        const overallProgress = ((index + fileProgress) / files.length) * 100;
+        
+        // Actualizar UI con velocidad y ETA en tiempo real
+        const now = Date.now();
+        const elapsed = (now - startTime) / 1000 || 1;
+        const speed = bytesTransferred / elapsed;
+        const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
+        
+        const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
+        const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+        
+        updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
         
         // Control de flujo
         if (conn.bufferedAmount > 16 * 1024 * 1024) {
           await new Promise(r => setTimeout(r, 100));
         }
+      }
+      
+      // Asegurar que al finalizar el último archivo se muestre 100%
+      if (index === files.length - 1) {
+        updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
       }
       
       // Archivo completado
@@ -469,6 +583,7 @@
     }
 
     let receivedFiles = {};
+    let receivedTotalSize = 0;
     
     function handleFileInfo(data) {
       receivedFiles[data.fileId] = {
@@ -478,7 +593,8 @@
         chunks: new Array(data.totalChunks),
         received: 0
       };
-      updateProgressUI(data.fileName, 0);
+      receivedTotalSize = data.totalFilesSize || data.fileSize;
+      updateReceiverProgress(data.fileName, 0);
     }
 
     function handleChunk(data) {
@@ -487,9 +603,10 @@
       
       fileData.chunks[data.index] = data.data;
       fileData.received++;
+      receiverBytesReceived += data.data.byteLength;
       
-      const progress = (fileData.received / fileData.totalChunks) * 100;
-      updateProgressUI(fileData.name, progress);
+      const fileProgress = fileData.received / fileData.totalChunks;
+      updateReceiverProgress(fileData.name, fileProgress * 100);
       
       if (fileData.received === fileData.totalChunks) {
         // Descargar archivo
@@ -505,6 +622,21 @@
         
         logFile(`✅ ${fileData.name} descargado`);
         delete receivedFiles[data.fileId];
+        
+        // Si era el último archivo, completar
+        if (Object.keys(receivedFiles).length === 0) {
+          const duration = ((Date.now() - receiverStartTime) / 1000).toFixed(1);
+          setStatus(`🎉 Completado en ${duration}s`, 'ok');
+          playCompleteSound();
+          
+          saveHistory({
+            type: 'receive',
+            fileName: fileData.name,
+            size: formatSize(fileData.size),
+            time: new Date().toLocaleString(),
+            duration: `${duration}s`
+          });
+        }
       }
     }
 
@@ -512,20 +644,22 @@
       logFile(`✅ ${fileName} completado`);
     }
 
-    function updateProgressUI(fileName, percent) {
+    function updateReceiverProgress(fileName, percent) {
       const now = Date.now();
-      const elapsed = (now - startTime) / 1000 || 1;
-      const speed = bytesTransferred / elapsed;
+      const elapsed = (now - receiverStartTime) / 1000 || 1;
+      const speed = receiverBytesReceived / elapsed;
+      const remaining = speed > 0 ? (receivedTotalSize - receiverBytesReceived) / speed : 0;
       
       const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
-      const eta = speed > 0 ? Math.max(0, (files.reduce((a, f) => a + f.size, 0) - bytesTransferred) / speed) : 0;
-      const etaStr = eta > 86400 ? '⏳ --:--' : `⏳ ${Math.floor(eta / 60)}:${String(Math.floor(eta % 60)).padStart(2, '0')}`;
+      const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
       
       updateProgress(percent, fileName, speedStr, etaStr);
     }
 
     // --- INICIO ---
     window.onload = async () => {
+      renderHistory();
+      
       // Verificar si hay sesión guardada (más viejo de 1 hora = expirada)
       const saved = localStorage.getItem(SESSION_KEY);
       if (saved) {
