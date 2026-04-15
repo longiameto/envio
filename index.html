@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comparte Archivos P2P - v5.3</title>
+  <title>Comparte Archivos P2P - v5.4</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     :root { --bg: #0b1120; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; --error: #ef4444; --border: #334155; }
@@ -30,7 +30,7 @@
     .progress-container { margin-top: 15px; background: #0f172a; border-radius: 10px; padding: 12px; display: none; }
     .progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin: 8px 0; }
     .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); width: 0%; transition: width 0.3s; }
-    .stats { display: flex; justify-content: space-between; font-size: 0.8rem; color: #94a3b8; margin-top: 5px; }
+    .stats { display: flex; justify-content:space-between; font-size: 0.8rem; color: #94a3b8; margin-top: 5px; }
     .file-list { max-height: 120px; overflow-y: auto; margin-top: 10px; font-size: 0.85rem; color: #cbd5e1; border-top: 1px solid #334155; padding-top: 8px; }
     .file-item { padding: 4px 0; display: flex; justify-content: space-between; }
     .hidden { display: none !important; }
@@ -122,14 +122,6 @@
     const DB_NAME = 'P2PTransferDB';
     const SESSION_KEY = 'p2p_session_v5';
     const HISTORY_KEY = 'p2p_history_v5';
-    
-    // Solo STUN de Google - gratis y confiable
-    const ICE_CONFIG = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    };
     
     let peer, conn, role = null, files = [];
     let transferId, sentChunks = new Set();
@@ -315,42 +307,34 @@
       navigator.clipboard.writeText(text).then(() => showToast('📋 Copiado', 'success'));
     }
 
-    // === CRITICAL FIX: Single unified data handler registered IMMEDIATELY ===
+    // === FIX CRÍTICO: Usar el sistema que SÍ funciona (v4.3) ===
     function setupConnection() {
-      // Register data handler FIRST before any data can arrive
-      conn.on('data', (data) => {
-        if (role === 'send') {
-          handleSenderData(data);
-        } else {
-          handleReceiverData(data);
-        }
-      });
-      
       conn.on('open', () => {
-        console.log('Connection opened!', role);
         if (role === 'send') {
+          // Emisor: registrar listener SOLO para handleSenderData
+          conn.on('data', handleSenderData);
           setStatus('🔐 Esperando autenticación...', 'wait');
         } else {
-          // Receiver sends auth immediately
-          console.log('Sending auth...');
+          // Receptor: enviar auth inmediatamente
           conn.send({ type: 'auth', password: currentPassword });
           setStatus('🔐 Autenticando...', 'wait');
         }
       });
-
+      
+      // Listener SEPARADO para receptor (como en v4.3)
+      conn.on('data', data => {
+        if (role === 'receive') {
+          handleReceiverData(data);
+        }
+      });
+      
       conn.on('close', () => {
         receiverConnected = false;
         setStatus('🔌 Desconectado', 'wait');
       });
-      
-      conn.on('error', (err) => {
-        console.error('Connection error:', err);
-        setStatus('❌ Error de conexión', 'err');
-      });
     }
 
     function handleSenderData(data) {
-      console.log('Sender received:', data.type);
       if (data.type === 'auth') {
         const pwd = currentPassword;
         if (pwd && data.password !== pwd) {
@@ -358,7 +342,6 @@
           setTimeout(() => conn.close(), 100);
           return showToast('❌ Contraseña incorrecta', 'error');
         }
-        console.log('Auth OK, sending auth_ok');
         conn.send({ type: 'auth_ok' });
         receiverConnected = true;
         setStatus('✅ Receptor conectado', 'ok');
@@ -368,7 +351,6 @@
     }
 
     function handleReceiverData(data) {
-      console.log('Receiver received:', data.type);
       if (data.type === 'auth_ok') {
         setStatus('✅ Conectado. Recibiendo...', 'ok');
         showToast('🔗 Conectado', 'success');
@@ -391,23 +373,19 @@
     }
 
     function initPeer() {
-      console.log('Initializing peer with ID:', transferId);
-      peer = new Peer(transferId, { debug: 2, config: ICE_CONFIG });
+      peer = new Peer(transferId, { debug: 0 });
       
       peer.on('open', (id) => {
-        console.log('Peer opened with ID:', id);
         setStatus('🟢 Listo. Esperando...', 'ok');
         showToast('✅ Listo', 'success');
       });
 
-      peer.on('connection', (c) => {
-        console.log('Incoming connection!');
+      peer.on('connection', c => {
         conn = c;
         setupConnection();
       });
 
-      peer.on('error', (err) => {
-        console.error('Peer error:', err);
+      peer.on('error', err => {
         if (err.type === 'unavailable-id') {
           setStatus('🔒 ID en uso', 'err');
           showToast('❌ ID ya existe', 'error');
@@ -426,20 +404,17 @@
       currentPassword = pwd;
       const target = `p2p-${targetId}`;
       
-      console.log('Connecting to:', target);
-      setStatus('🔄 Creando peer...', 'wait');
+      setStatus('🔄 Conectando...', 'wait');
       
-      peer = new Peer({ debug: 2, config: ICE_CONFIG });
+      peer = new Peer({ debug: 0 });
       
       peer.on('open', () => {
-        console.log('Receiver peer opened, connecting to:', target);
         setStatus('🔄 Conectando...', 'wait');
         conn = peer.connect(target);
         setupConnection();
       });
       
-      peer.on('error', (err) => {
-        console.error('Receiver peer error:', err);
+      peer.on('error', err => {
         if (err.type === 'peer-unavailable') {
           setStatus('❌ Emisor no encontrado', 'err');
           showToast('❌ Verifica el ID', 'error');
