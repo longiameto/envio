@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comparte Archivos P2P - v4.1</title>
+  <title>Comparte Archivos P2P - v4.2</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root { --bg: #0b1120; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; --error: #ef4444; --warn: #f59e0b; }
@@ -120,7 +120,7 @@
 
   <script>
     // --- CONFIGURACIÓN ---
-    const CHUNK_SIZE = 512 * 1024; // 512KB por chunk (más pequeño para mejor compatibilidad)
+    const CHUNK_SIZE = 256 * 1024; // 256KB por chunk (más pequeño = más confiable)
     const DB_NAME = 'P2PTransferDB';
     const STORE_NAME = 'transferState';
     const SESSION_KEY = 'p2p_session_v4';
@@ -138,7 +138,7 @@
     let receiverStartTime = 0;
     let receiverTotalSize = 0;
     let receivedFiles = {};
-    let currentReceivingFile = null;
+    let filesToDownload = [];
 
     // --- INDEXEDDB ---
     const dbPromise = new Promise((resolve, reject) => {
@@ -154,17 +154,6 @@
         const tx = db.transaction(STORE_NAME, 'readwrite');
         tx.objectStore(STORE_NAME).put(data);
       } catch(e) { console.error('Save error:', e); }
-    }
-
-    async function loadState(id) {
-      try {
-        const db = await dbPromise;
-        return new Promise(resolve => {
-          const tx = db.transaction(STORE_NAME, 'readonly');
-          const req = tx.objectStore(STORE_NAME).get(id);
-          req.onsuccess = () => resolve(req.result || null);
-        });
-      } catch(e) { return null; }
     }
 
     async function clearAllState() {
@@ -445,7 +434,7 @@
         receiverStartTime = Date.now();
         receiverBytesReceived = 0;
         receivedFiles = {};
-        currentReceivingFile = null;
+        filesToDownload = [];
       } else if (data.type === 'auth_fail') {
         setStatus('❌ Contraseña incorrecta', 'err');
         conn.close();
@@ -487,6 +476,7 @@
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         await sendFile(file, i, totalSize);
+        await new Promise(r => setTimeout(r, 200)); // Pausa entre archivos
       }
       
       const duration = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -513,8 +503,9 @@
       const fileName = file.webkitRelativePath || file.name;
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       
-      logFile(`📤 ${fileName} (${formatSize(file.size)})`);
+      logFile(`📤 ${fileName} (${formatSize(file.size)}) - ${totalChunks} chunks`);
       
+      // Enviar info del archivo
       conn.send({
         type: 'file_info',
         fileName: fileName,
@@ -524,9 +515,10 @@
         totalFilesSize: totalSize
       });
       
-      // Pequeña pausa antes de enviar chunks
+      // Esperar confirmación
       await new Promise(r => setTimeout(r, 100));
       
+      // Enviar chunks uno por uno con pausa
       for (let c = 0; c < totalChunks; c++) {
         const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
         const buffer = await chunk.arrayBuffer();
@@ -535,7 +527,7 @@
           type: 'chunk',
           fileId: `${file.name}-${file.size}-${index}`,
           index: c,
-          data: buffer,
+           buffer,
           total: totalChunks
         });
         
@@ -555,19 +547,21 @@
         
         updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
         
-        // Control de flujo más agresivo
-        if (conn.bufferedAmount > 8 * 1024 * 1024) {
-          await new Promise(r => setTimeout(r, 200));
+        // Control de flujo muy conservador
+        if (conn.bufferedAmount > 4 * 1024 * 1024) {
+          await new Promise(r => setTimeout(r, 300));
+        } else {
+          await new Promise(r => setTimeout(r, 50)); // Pausa pequeña entre chunks
         }
       }
       
-      // Asegurar 100% al finalizar
+      // Asegurar 100%
       if (index === files.length - 1) {
         updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
       }
       
-      // Pequeña pausa antes de enviar "complete"
-      await new Promise(r => setTimeout(r, 100));
+      // Enviar "complete" DESPUÉS de todos los chunks
+      await new Promise(r => setTimeout(r, 200));
       conn.send({ type: 'complete', fileName: fileName });
       logFile(`✅ ${fileName} enviado`);
     }
@@ -580,15 +574,15 @@
         chunks: new Array(data.totalChunks),
         received: 0
       };
-      currentReceivingFile = data.fileId;
       receiverTotalSize = data.totalFilesSize || data.fileSize;
+      logFile(`📥 Recibiendo: ${data.fileName} (${data.totalChunks} chunks)`);
       updateReceiverProgress(data.fileName, 0);
     }
 
     function handleChunk(data) {
       const fileData = receivedFiles[data.fileId];
       if (!fileData) {
-        console.error('Chunk recibido sin file_info previo:', data.fileId);
+        logFile(`❌ Chunk sin file_info: ${data.fileId}`);
         return;
       }
       
@@ -606,21 +600,39 @@
       
       // Verificar si está completo
       if (fileData.received === fileData.totalChunks) {
-        downloadFile(fileData);
+        logFile(`✓ ${fileData.name}: ${fileData.received}/${fileData.totalChunks} chunks listos`);
+        filesToDownload.push(fileData);
+        processDownloadQueue();
       }
+    }
+
+    function processDownloadQueue() {
+      if (filesToDownload.length === 0) return;
+      
+      const fileData = filesToDownload.shift();
+      downloadFile(fileData);
+      
+      // Procesar el siguiente después de un momento
+      setTimeout(() => processDownloadQueue(), 500);
     }
 
     function downloadFile(fileData) {
       try {
         // Filtrar chunks undefined
-        const validChunks = fileData.chunks.filter(c => c !== undefined);
+        const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
         
         if (validChunks.length !== fileData.totalChunks) {
-          console.error(`Faltan chunks: ${validChunks.length}/${fileData.totalChunks}`);
+          logFile(`❌ ${fileData.name}: Faltan chunks (${validChunks.length}/${fileData.totalChunks})`);
           return;
         }
         
         const blob = new Blob(validChunks);
+        
+        if (blob.size === 0) {
+          logFile(`❌ ${fileData.name}: Blob vacío`);
+          return;
+        }
+        
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -630,11 +642,10 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        logFile(`✅ ${fileData.name} descargado (${formatSize(fileData.size)})`);
-        delete receivedFiles[Object.keys(receivedFiles).find(key => receivedFiles[key] === fileData)];
+        logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
         
         // Si era el último archivo
-        if (Object.keys(receivedFiles).length === 0) {
+        if (Object.keys(receivedFiles).length === 1 && filesToDownload.length === 0) {
           const duration = ((Date.now() - receiverStartTime) / 1000).toFixed(1);
           setStatus(`🎉 Completado en ${duration}s`, 'ok');
           playCompleteSound();
@@ -648,13 +659,13 @@
           });
         }
       } catch (e) {
-        console.error('Error al descargar:', e);
-        logFile(`❌ Error al descargar ${fileData.name}`);
+        logFile(`❌ Error al descargar ${fileData.name}: ${e.message}`);
+        console.error('Download error:', e);
       }
     }
 
     function finalizeFile(fileName) {
-      logFile(`✅ ${fileName} completado`);
+      logFile(`📦 ${fileName} completado (mensaje recibido)`);
     }
 
     function updateReceiverProgress(fileName, percent) {
