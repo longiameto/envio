@@ -3,12 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comparte Archivos P2P - v6.0 Final</title>
-  <!-- PeerJS y QRCode -->
+  <title>Comparte Archivos P2P - v6.1 Final</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    /* Estilos Modernos y Limpios */
     :root { --bg: #0b1120; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; --error: #ef4444; --border: #334155; }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
     body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
@@ -44,7 +42,6 @@
     .history-item { padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 0.8rem; }
     .history-item:last-child { border-bottom: none; }
     .history-time { color: #64748b; font-size: 0.75rem; }
-    /* Notificaciones Toast */
     .toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; }
     .toast { background: var(--card); border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-bottom: 8px; animation: slideIn 0.3s; }
     .toast.success { border-color: var(--success); }
@@ -127,7 +124,6 @@
     const SESSION_KEY = 'p2p_session_v6';
     const HISTORY_KEY = 'p2p_history_v6';
     
-    // Variables globales
     let peer, conn, role = null, files = [];
     let transferId, sentChunks = new Set();
     let startTime, bytesTransferred = 0;
@@ -139,7 +135,6 @@
     let receiverTotalSize = 0;
     let receivedFiles = {};
 
-    // --- BASE DE DATOS LOCAL ---
     const dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, 1);
       req.onupgradeneeded = e => e.target.result.createObjectStore('transferState', { keyPath: 'id' });
@@ -156,7 +151,6 @@
       } catch(e) {}
     }
 
-    // --- HISTORIAL ---
     function saveHistory(entry) {
       let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
       history.unshift(entry);
@@ -184,7 +178,6 @@
       document.getElementById('history-ui').classList.remove('hidden');
     }
 
-    // --- SONIDO Y TOAST ---
     function playCompleteSound() {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -219,7 +212,6 @@
       }
     }
 
-    // --- FLUJO DE ROLES ---
     function setRole(r) {
       role = r;
       document.getElementById('btn-send').classList.toggle('active', r === 'send');
@@ -252,7 +244,6 @@
       document.getElementById('my-id-display').textContent = `Tu ID: ${idInput}`;
       document.getElementById('step-indicator').textContent = 'Paso 3: Selecciona archivos';
       
-      // Generar QR
       document.getElementById('qr-code').innerHTML = '';
       new QRCode(document.getElementById('qr-code'), {
         text: idInput, width: 120, height: 120,
@@ -318,11 +309,10 @@
     }
 
     // =========================================================
-    // === LÓGICA DE CONEXIÓN (RESTAURADA A LA QUE SÍ FUNCIONA) ===
+    // === LÓGICA DE CONEXIÓN (LA QUE SÍ FUNCIONA) ===
     // =========================================================
 
     function initPeer() {
-      // SIN configuración manual de ICE. Usamos el defecto que funciona.
       peer = new Peer(transferId, { debug: 0 });
       
       peer.on('open', (id) => {
@@ -356,7 +346,6 @@
       
       setStatus('🔄 Conectando...', 'wait');
       
-      // SIN configuración manual de ICE.
       peer = new Peer({ debug: 0 });
       
       peer.on('open', () => {
@@ -376,7 +365,6 @@
     }
 
     function setupConnection() {
-      // Lógica exacta de v4.3 que conecta perfectamente
       conn.on('open', () => {
         if (role === 'send') {
           conn.on('data', handleSenderData);
@@ -387,7 +375,6 @@
         }
       });
       
-      // Listener global para el receptor
       conn.on('data', data => {
         if (role === 'receive') {
           handleReceiverData(data);
@@ -533,8 +520,11 @@
     
     function handleFileInfo(data) {
       receivedFiles[data.fileId] = {
-        name: data.fileName, size: data.fileSize,
-        totalChunks: data.totalChunks, chunks: new Array(data.totalChunks), received: 0
+        name: data.fileName, 
+        size: data.fileSize,
+        totalChunks: data.totalChunks, 
+        chunks: [],  // FIX: Usar array vacío en vez de new Array()
+        received: 0
       };
       receiverTotalSize = data.totalFilesSize || data.fileSize;
       logFile(`📥 ${data.fileName}`);
@@ -543,8 +533,15 @@
 
     function handleChunk(data) {
       const fileData = receivedFiles[data.fileId];
-      if (!fileData) return;
-      if (fileData.chunks[data.index]) return;
+      if (!fileData) {
+        console.error('Chunk recibido sin file_info:', data.fileId);
+        return;
+      }
+      
+      // FIX: Verificar si el chunk ya existe
+      if (fileData.chunks[data.index] !== undefined) {
+        return;
+      }
       
       fileData.chunks[data.index] = data.data;
       fileData.received++;
@@ -553,46 +550,71 @@
       const progress = (fileData.received / fileData.totalChunks) * 100;
       updateReceiverProgress(fileData.name, progress);
       
+      // FIX: Verificar si todos los chunks llegaron
       if (fileData.received === fileData.totalChunks) {
-        logFile(`✓ ${fileData.name}: Descargando...`);
+        logFile(`✓ ${fileData.name}: ${fileData.received}/${fileData.totalChunks} - Descargando...`);
         downloadFile(fileData);
       }
     }
 
     function downloadFile(fileData) {
       try {
-        const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
+        // FIX: Filtrar solo chunks definidos
+        const validChunks = fileData.chunks.filter(chunk => chunk !== undefined);
+        
         if (validChunks.length !== fileData.totalChunks) {
-          logFile(`❌ Faltan chunks (${validChunks.length}/${fileData.totalChunks})`);
+          logFile(`❌ Faltan chunks: ${validChunks.length}/${fileData.totalChunks}`);
+          console.error('Chunks faltantes:', fileData.chunks.map((c, i) => c === undefined ? i : -1).filter(i => i !== -1));
           return;
         }
         
-        const blob = new Blob(validChunks);
-        if (blob.size === 0) { logFile(`❌ Blob vacío`); return; }
+        // FIX: Crear blob correctamente
+        const blob = new Blob(validChunks, { type: 'application/octet-stream' });
         
+        if (blob.size === 0) { 
+          logFile(`❌ Blob vacío`); 
+          return; 
+        }
+        
+        // FIX: Descargar inmediatamente
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = fileData.name;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        a.href = url; 
+        a.download = fileData.name;
+        a.style.display = 'none';
+        document.body.appendChild(a); 
         
+        // Forzar click
+        a.click();
+        
+        // Limpiar
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+        
+        // Liberar memoria
         fileData.chunks = null;
-        delete receivedFiles[Object.keys(receivedFiles).find(key => receivedFiles[key] === fileData)];
+        delete receivedFiles[fileData.fileId || Object.keys(receivedFiles).find(key => receivedFiles[key] === fileData)];
         
-        logFile(`✅ ${fileData.name} (${formatSize(blob.size)})`);
+        logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
         
+        // Verificar si era el último archivo
         if (Object.keys(receivedFiles).length === 0) {
           const duration = ((Date.now() - receiverStartTime) / 1000).toFixed(1);
           setStatus(`🎉 Completado en ${duration}s`, 'ok');
           playCompleteSound();
           saveHistory({
-            type: 'receive', fileName: fileData.name,
-            size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s`
+            type: 'receive', 
+            fileName: fileData.name,
+            size: formatSize(fileData.size), 
+            time: new Date().toLocaleString(), 
+            duration: `${duration}s`
           });
         }
       } catch (e) {
-        logFile(`❌ Error: ${e.message}`);
+        logFile(`❌ Error al descargar: ${e.message}`);
+        console.error('Download error:', e);
       }
     }
 
@@ -612,7 +634,6 @@
       updateProgress(percent, fileName, speedStr, etaStr);
     }
 
-    // --- INICIO ---
     window.onload = async () => {
       renderHistory();
       const saved = localStorage.getItem(SESSION_KEY);
