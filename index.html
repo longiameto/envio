@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comparte Archivos P2P - v4</title>
+  <title>Comparte Archivos P2P - v4.1</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root { --bg: #0b1120; --card: #1e293b; --text: #e2e8f0; --accent: #3b82f6; --success: #22c55e; --error: #ef4444; --warn: #f59e0b; }
@@ -102,7 +102,7 @@
       </div>
       <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
       <div class="stats">
-        <span id="progress-speed">0 MB/s</span>
+        <span id="progress-speed">0 KB/s</span>
         <span id="progress-eta">⏳ --:--</span>
       </div>
       <div class="file-list" id="file-log"></div>
@@ -120,7 +120,7 @@
 
   <script>
     // --- CONFIGURACIÓN ---
-    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB por chunk
+    const CHUNK_SIZE = 512 * 1024; // 512KB por chunk (más pequeño para mejor compatibilidad)
     const DB_NAME = 'P2PTransferDB';
     const STORE_NAME = 'transferState';
     const SESSION_KEY = 'p2p_session_v4';
@@ -132,12 +132,13 @@
     let currentPassword = '';
     let receiverConnected = false;
     let filesReady = false;
-    let transferComplete = false;
     
     // Para el receptor
     let receiverBytesReceived = 0;
     let receiverStartTime = 0;
     let receiverTotalSize = 0;
+    let receivedFiles = {};
+    let currentReceivingFile = null;
 
     // --- INDEXEDDB ---
     const dbPromise = new Promise((resolve, reject) => {
@@ -180,7 +181,7 @@
       try {
         let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
         history.unshift(entry);
-        if (history.length > 20) history = history.slice(0, 20); // Máximo 20 entradas
+        if (history.length > 20) history = history.slice(0, 20);
         localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
         renderHistory();
       } catch(e) { console.error('History error:', e); }
@@ -218,9 +219,9 @@
         oscillator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
         
-        oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
-        oscillator.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
-        oscillator.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+        oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+        oscillator.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1);
+        oscillator.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2);
         
         gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
@@ -270,7 +271,6 @@
       transferId = `p2p-${idInput}`;
       currentPassword = pwd;
       
-      // Guardar sesión
       localStorage.setItem(SESSION_KEY, JSON.stringify({
         role: 'send',
         id: idInput,
@@ -294,8 +294,8 @@
 
     function updateProgress(percent, fileName, speed, eta) {
       document.getElementById('progress-ui').style.display = 'block';
-      document.getElementById('progress-fill').style.width = `${Math.min(100, percent)}%`;
-      document.getElementById('progress-percent').textContent = `${percent.toFixed(1)}%`;
+      document.getElementById('progress-fill').style.width = `${Math.min(100, Math.max(0, percent))}%`;
+      document.getElementById('progress-percent').textContent = `${Math.min(100, Math.max(0, percent)).toFixed(1)}%`;
       document.getElementById('progress-file').textContent = fileName;
       document.getElementById('progress-speed').textContent = speed;
       document.getElementById('progress-eta').textContent = eta;
@@ -397,11 +397,9 @@
     async function setupConnection() {
       conn.on('open', () => {
         if (role === 'send') {
-          // Emisor espera auth del receptor
           conn.on('data', handleSenderData);
           setStatus('🔐 Receptor conectado. Esperando auth...', 'wait');
         } else {
-          // Receptor envía auth
           conn.send({ type: 'auth', password: currentPassword });
           setStatus('🔐 Enviando credenciales...', 'wait');
         }
@@ -435,11 +433,6 @@
         if (filesReady) {
           setStatus('✅ Todo listo. ¡Pulsa INICIAR!', 'ok');
         }
-      } else if (data.type === 'ready_to_receive') {
-        // Receptor está listo, podemos enviar
-        if (filesReady && files.length > 0) {
-          startTransfer();
-        }
       }
     }
 
@@ -450,6 +443,9 @@
         document.getElementById('progress-ui').style.display = 'block';
         document.getElementById('step-indicator').textContent = 'Recibiendo archivos...';
         receiverStartTime = Date.now();
+        receiverBytesReceived = 0;
+        receivedFiles = {};
+        currentReceivingFile = null;
       } else if (data.type === 'auth_fail') {
         setStatus('❌ Contraseña incorrecta', 'err');
         conn.close();
@@ -480,31 +476,25 @@
       sentChunks.clear();
       startTime = Date.now();
       bytesTransferred = 0;
-      transferComplete = false;
       
       document.getElementById('btn-start').disabled = true;
       document.getElementById('btn-start').textContent = '⏳ Enviando...';
       
       setStatus('📤 Iniciando transferencia...', 'wait');
       
-      // Calcular tamaño total
       const totalSize = files.reduce((a, f) => a + f.size, 0);
       
-      // Enviar cada archivo
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         await sendFile(file, i, totalSize);
       }
       
-      // Transferencia completada
-      transferComplete = true;
       const duration = ((Date.now() - startTime) / 1000).toFixed(1);
       
       setStatus(`🎉 ¡Transferencia completada en ${duration}s!`, 'ok');
       document.getElementById('btn-start').textContent = '✅ Completado';
       document.getElementById('btn-start').disabled = false;
       
-      // Guardar en historial
       files.forEach(f => {
         saveHistory({
           type: 'send',
@@ -525,17 +515,18 @@
       
       logFile(`📤 ${fileName} (${formatSize(file.size)})`);
       
-      // Enviar info del archivo
       conn.send({
         type: 'file_info',
         fileName: fileName,
         fileSize: file.size,
         totalChunks: totalChunks,
         fileId: `${file.name}-${file.size}-${index}`,
-        totalFilesSize: totalSize // Para que el receptor sepa el total
+        totalFilesSize: totalSize
       });
       
-      // Enviar chunks
+      // Pequeña pausa antes de enviar chunks
+      await new Promise(r => setTimeout(r, 100));
+      
       for (let c = 0; c < totalChunks; c++) {
         const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
         const buffer = await chunk.arrayBuffer();
@@ -544,18 +535,16 @@
           type: 'chunk',
           fileId: `${file.name}-${file.size}-${index}`,
           index: c,
-           buffer,
+          data: buffer,
           total: totalChunks
         });
         
         sentChunks.add(`${file.name}-${c}`);
         bytesTransferred += buffer.byteLength;
         
-        // Calcular progreso corregido para el emisor
         const fileProgress = (c + 1) / totalChunks;
         const overallProgress = ((index + fileProgress) / files.length) * 100;
         
-        // Actualizar UI con velocidad y ETA en tiempo real
         const now = Date.now();
         const elapsed = (now - startTime) / 1000 || 1;
         const speed = bytesTransferred / elapsed;
@@ -566,24 +555,22 @@
         
         updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
         
-        // Control de flujo
-        if (conn.bufferedAmount > 16 * 1024 * 1024) {
-          await new Promise(r => setTimeout(r, 100));
+        // Control de flujo más agresivo
+        if (conn.bufferedAmount > 8 * 1024 * 1024) {
+          await new Promise(r => setTimeout(r, 200));
         }
       }
       
-      // Asegurar que al finalizar el último archivo se muestre 100%
+      // Asegurar 100% al finalizar
       if (index === files.length - 1) {
         updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
       }
       
-      // Archivo completado
+      // Pequeña pausa antes de enviar "complete"
+      await new Promise(r => setTimeout(r, 100));
       conn.send({ type: 'complete', fileName: fileName });
       logFile(`✅ ${fileName} enviado`);
     }
-
-    let receivedFiles = {};
-    let receivedTotalSize = 0;
     
     function handleFileInfo(data) {
       receivedFiles[data.fileId] = {
@@ -593,24 +580,47 @@
         chunks: new Array(data.totalChunks),
         received: 0
       };
-      receivedTotalSize = data.totalFilesSize || data.fileSize;
+      currentReceivingFile = data.fileId;
+      receiverTotalSize = data.totalFilesSize || data.fileSize;
       updateReceiverProgress(data.fileName, 0);
     }
 
     function handleChunk(data) {
       const fileData = receivedFiles[data.fileId];
-      if (!fileData) return;
+      if (!fileData) {
+        console.error('Chunk recibido sin file_info previo:', data.fileId);
+        return;
+      }
+      
+      // Evitar duplicados
+      if (fileData.chunks[data.index]) {
+        return;
+      }
       
       fileData.chunks[data.index] = data.data;
       fileData.received++;
       receiverBytesReceived += data.data.byteLength;
       
-      const fileProgress = fileData.received / fileData.totalChunks;
-      updateReceiverProgress(fileData.name, fileProgress * 100);
+      const progress = (fileData.received / fileData.totalChunks) * 100;
+      updateReceiverProgress(fileData.name, progress);
       
+      // Verificar si está completo
       if (fileData.received === fileData.totalChunks) {
-        // Descargar archivo
-        const blob = new Blob(fileData.chunks);
+        downloadFile(fileData);
+      }
+    }
+
+    function downloadFile(fileData) {
+      try {
+        // Filtrar chunks undefined
+        const validChunks = fileData.chunks.filter(c => c !== undefined);
+        
+        if (validChunks.length !== fileData.totalChunks) {
+          console.error(`Faltan chunks: ${validChunks.length}/${fileData.totalChunks}`);
+          return;
+        }
+        
+        const blob = new Blob(validChunks);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -620,10 +630,10 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        logFile(`✅ ${fileData.name} descargado`);
-        delete receivedFiles[data.fileId];
+        logFile(`✅ ${fileData.name} descargado (${formatSize(fileData.size)})`);
+        delete receivedFiles[Object.keys(receivedFiles).find(key => receivedFiles[key] === fileData)];
         
-        // Si era el último archivo, completar
+        // Si era el último archivo
         if (Object.keys(receivedFiles).length === 0) {
           const duration = ((Date.now() - receiverStartTime) / 1000).toFixed(1);
           setStatus(`🎉 Completado en ${duration}s`, 'ok');
@@ -637,6 +647,9 @@
             duration: `${duration}s`
           });
         }
+      } catch (e) {
+        console.error('Error al descargar:', e);
+        logFile(`❌ Error al descargar ${fileData.name}`);
       }
     }
 
@@ -648,10 +661,10 @@
       const now = Date.now();
       const elapsed = (now - receiverStartTime) / 1000 || 1;
       const speed = receiverBytesReceived / elapsed;
-      const remaining = speed > 0 ? (receivedTotalSize - receiverBytesReceived) / speed : 0;
+      const remaining = speed > 0 && receiverTotalSize > receiverBytesReceived ? (receiverTotalSize - receiverBytesReceived) / speed : 0;
       
       const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
-      const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+      const etaStr = remaining > 86400 || remaining < 0 || elapsed < 1 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
       
       updateProgress(percent, fileName, speedStr, etaStr);
     }
@@ -660,21 +673,18 @@
     window.onload = async () => {
       renderHistory();
       
-      // Verificar si hay sesión guardada (más viejo de 1 hora = expirada)
       const saved = localStorage.getItem(SESSION_KEY);
       if (saved) {
         const session = JSON.parse(saved);
-        const age = (Date.now() - session.timestamp) / 1000 / 60 / 60; // horas
+        const age = (Date.now() - session.timestamp) / 1000 / 60 / 60;
         
         if (age < 1 && session.role === 'send') {
-          // Restaurar sesión reciente
           document.getElementById('sender-id').value = session.id;
           currentPassword = session.password || '';
           setRole('send');
           setupSender();
           setStatus('🔄 Sesión restaurada', 'wait');
         } else {
-          // Sesión expirada o inválida
           localStorage.removeItem(SESSION_KEY);
           await clearAllState();
         }
