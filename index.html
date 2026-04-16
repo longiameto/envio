@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.4 Fix</title>
+<title>Comparte Archivos P2P - v8.5 Final</title>
 <!-- Librerías externas (todas gratuitas) -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -43,6 +43,7 @@ button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; 
 .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-secondary { background: var(--border); color: var(--text); margin-top: 10px; }
 .btn-danger { background: var(--error); color: white; margin-top: 12px; }
+.btn-back { background: #6c757d; color: white; margin-top: 12px; }
 .info-box { background: var(--bg); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; word-break: break-all; margin: 10px 0; border: 1px dashed var(--border); text-align: center; }
 .qr-container { display: flex; justify-content: center; margin: 10px 0; background: white; padding: 10px; border-radius: 8px; width: fit-content; margin-inline: auto; }
 .status { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-size: 0.9rem; }
@@ -59,22 +60,30 @@ button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; 
 .note { font-size: 0.75rem; color: var(--text); opacity: 0.7; margin-top: 6px; text-align: center; }
 .step-indicator { text-align: center; margin-bottom: 15px; padding: 8px; background: var(--bg); border-radius: 8px; font-size: 0.9rem; color: var(--accent); font-weight: 600; }
 .file-select-buttons { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
-/* Drag & Drop styles */
+/* Drag & Drop - TAMAÑO MEJORADO */
 .drop-zone {
 border: 2px dashed var(--border);
 border-radius: 10px;
-padding: 20px;
+padding: 30px 20px;
+min-height: 180px;
 text-align: center;
 margin: 10px 0;
 transition: all 0.2s;
 cursor: pointer;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
 }
 .drop-zone.dragover {
 border-color: var(--accent);
 background: rgba(59, 130, 246, 0.1);
 }
-.drop-zone p { margin: 0; color: var(--text); opacity: 0.8; }
+.drop-zone p { margin: 5px 0; color: var(--text); opacity: 0.8; }
+.drop-zone .big-icon { font-size: 2rem; margin-bottom: 8px; }
 .history-container { margin-top: 15px; background: var(--bg); border-radius: 10px; padding: 10px; max-height: 150px; overflow-y: auto; }
+.history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.history-header span { font-weight: 600; color: var(--text); opacity: 0.8; }
 .history-item { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
 .history-item:last-child { border-bottom: none; }
 .history-time { color: var(--text); opacity: 0.7; font-size: 0.75rem; }
@@ -83,15 +92,14 @@ background: rgba(59, 130, 246, 0.1);
 .toast.success { border-color: var(--success); }
 .toast.error { border-color: var(--error); }
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.button-group { display: flex; gap: 10px; margin-top: 12px; }
+.button-group button { margin-top: 0; }
 /* Mobile optimizations */
 @media (max-width: 480px) {
 .container { padding: 1rem; }
 .btn-role { padding: 12px; font-size: 1rem; }
 input, button { padding: 10px; font-size: 0.9rem; }
-}
-/* Safari fixes */
-@supports (-webkit-touch-callout: none) {
-input[type="file"] { font-size: 16px; }
+.drop-zone { min-height: 140px; padding: 20px; }
 }
 </style>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -129,10 +137,11 @@ input[type="file"] { font-size: 16px; }
 <div class="qr-container" id="qr-code"></div>
 <button class="btn-secondary" onclick="copyId()">📋 Copiar ID</button>
 <div class="note">Escanea o comparte el ID</div>
-<!-- Drag & Drop Zone -->
+<!-- Drag & Drop Zone mejorada -->
 <div class="drop-zone" id="drop-zone">
-<p>📁 Arrastra archivos o carpetas aquí</p>
-<p style="font-size:0.7rem; opacity:0.7">o</p>
+<div class="big-icon">📁📂</div>
+<p>Arrastra archivos o carpetas aquí</p>
+<p style="font-size:0.7rem; opacity:0.7">o haz clic para seleccionar</p>
 </div>
 <div class="file-select-buttons">
 <input type="file" id="file-input" multiple style="display:none" onchange="handleFilesSelected()">
@@ -140,7 +149,7 @@ input[type="file"] { font-size: 16px; }
 <button class="btn-action" onclick="document.getElementById('file-input').click()">📄 Seleccionar Archivos</button>
 <button class="btn-secondary" onclick="document.getElementById('folder-input').click()">📂 Seleccionar Carpeta</button>
 </div>
-<!-- Lista de archivos cargados con botón eliminar -->
+<!-- Lista de archivos cargados -->
 <div id="loaded-files-list" class="hidden" style="margin: 10px 0; max-height: 150px; overflow-y: auto;"></div>
 <div id="files-selected" class="hidden">
 <div class="note" id="files-count"></div>
@@ -160,12 +169,19 @@ input[type="file"] { font-size: 16px; }
 <div class="file-list" id="file-log"></div>
 </div>
 <div class="history-container hidden" id="history-ui">
-<div style="font-weight:600; margin-bottom:8px; color:var(--text); opacity:0.8;">📋 Historial</div>
+<div class="history-header">
+<span>📋 Historial</span>
+<button onclick="clearHistory()" style="background: var(--error); color:white; border:none; padding:4px 8px; border-radius:6px; font-size:0.75rem; cursor:pointer;">🗑️ Limpiar</button>
+</div>
 <div id="history-list"></div>
 </div>
 <div id="status" class="status wait">⏳ Selecciona Emisor o Receptor</div>
+<div class="button-group">
+<button class="btn-back" onclick="goBackToRoleSelection()">◀ Volver</button>
 <button class="btn-danger" onclick="hardReset()">🗑️ Reiniciar</button>
 </div>
+</div>
+
 <script>
 const CHUNK_SIZE = 256 * 1024;
 const DB_NAME = 'P2PTransferDB';
@@ -178,10 +194,9 @@ let currentPassword = '';
 let receiverConnected = false;
 let filesReady = false;
 let receiverBytesReceived = 0;
-let receiverStartTime = 0;
 let receiverTransferStartTime = 0; // Timer real de transferencia
 let receiverTotalSize = 0;
-let receivedFiles = {};
+let receivedFiles = {};  // cada entrada tendrá también fileId
 let isDarkMode = true;
 
 const dbPromise = new Promise((resolve, reject) => {
@@ -234,6 +249,14 @@ ${escapeHtml(h.size)} • ${escapeHtml(h.duration)}
 document.getElementById('history-ui').classList.remove('hidden');
 }
 
+function clearHistory() {
+if (confirm('¿Eliminar todo el historial de transferencias?')) {
+localStorage.removeItem(HISTORY_KEY);
+renderHistory();
+showToast('Historial borrado', 'success');
+}
+}
+
 function playCompleteSound() {
 try {
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -259,11 +282,49 @@ setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 3
 }
 
 function hardReset() {
-if (confirm('⚠️ ¿Borrar todo?')) {
+if (confirm('⚠️ ¿Borrar todo el estado y recargar?')) {
 if (peer && !peer.destroyed) peer.destroy();
 clearAllState();
 localStorage.removeItem(HISTORY_KEY);
 location.reload();
+}
+}
+
+// NUEVA FUNCIÓN: Volver a la selección de rol sin recargar
+function goBackToRoleSelection() {
+if (confirm('¿Volver atrás? Se perderá la conexión actual y los archivos seleccionados.')) {
+// Cerrar peer y conexión
+if (peer && !peer.destroyed) {
+peer.destroy();
+}
+peer = null;
+conn = null;
+// Resetear variables globales
+role = null;
+files = [];
+selectedFolders.clear();
+filesReady = false;
+receiverConnected = false;
+currentPassword = '';
+receiverBytesReceived = 0;
+receiverTransferStartTime = 0;
+receiverTotalSize = 0;
+receivedFiles = {};
+// Ocultar todas las interfaces secundarias
+document.getElementById('sender-auth').classList.add('hidden');
+document.getElementById('receiver-auth').classList.add('hidden');
+document.getElementById('sender-ui').classList.add('hidden');
+document.getElementById('progress-ui').style.display = 'none';
+document.getElementById('role-selection').classList.remove('hidden');
+document.getElementById('step-indicator').textContent = 'Paso 1: Selecciona tu rol';
+setStatus('⏳ Selecciona Emisor o Receptor', 'wait');
+// Limpiar inputs de archivos y logs
+document.getElementById('file-log').innerHTML = '';
+document.getElementById('loaded-files-list').classList.add('hidden');
+document.getElementById('files-selected').classList.add('hidden');
+document.getElementById('btn-start').disabled = false;
+document.getElementById('btn-start').textContent = '🚀 Iniciar';
+clearFileInputs();
 }
 }
 
@@ -335,9 +396,7 @@ const progressPercent = document.getElementById('progress-percent');
 const progressFile = document.getElementById('progress-file');
 const progressSpeed = document.getElementById('progress-speed');
 const progressEta = document.getElementById('progress-eta');
-
-if (!progressUI || !progressFill || !progressPercent || !progressFile || !progressSpeed || !progressEta) return;
-
+if (!progressUI) return;
 progressUI.style.display = 'block';
 progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
 progressPercent.textContent = `${Math.min(100, Math.max(0, percent)).toFixed(1)}%`;
@@ -360,7 +419,7 @@ if (fileInput) fileInput.value = '';
 if (folderInput) folderInput.value = '';
 }
 
-// === DRAG & DROP MEJORADO ===
+// === DRAG & DROP ===
 function setupDragDrop() {
 const dropZone = document.getElementById('drop-zone');
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -380,9 +439,7 @@ dropZone.addEventListener('drop', async e => {
 dropZone.classList.remove('dragover');
 const items = e.dataTransfer.items;
 if (!items) return;
-
 const allFiles = [];
-
 async function readEntry(entry, path = '') {
 if (entry.isFile) {
 return new Promise(resolve => {
@@ -405,17 +462,14 @@ resolve();
 });
 }
 }
-
 for (let i = 0; i < items.length; i++) {
 const entry = items[i].webkitGetAsEntry?.();
 if (entry) await readEntry(entry);
 }
-
 files = allFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
 processSelectedFiles();
 clearFileInputs();
 });
-
 dropZone.addEventListener('click', () => {
 if (selectedFolders.size > 0) {
 document.getElementById('folder-input').click();
@@ -423,12 +477,6 @@ document.getElementById('folder-input').click();
 document.getElementById('file-input').click();
 }
 });
-}
-
-function handleFilesSelectedFromDrop(fileList) {
-files = Array.from(fileList);
-processSelectedFiles();
-clearFileInputs();
 }
 
 function handleFilesSelected() {
@@ -462,7 +510,6 @@ renderLoadedFiles();
 }
 }
 
-// === Renderizar lista de archivos cargados con botón eliminar ===
 function renderLoadedFiles() {
 const container = document.getElementById('loaded-files-list');
 if (!container || files.length === 0) {
@@ -470,10 +517,8 @@ if (container) container.classList.add('hidden');
 return;
 }
 container.classList.remove('hidden');
-
 const rendered = new Set();
 let html = '';
-
 files.forEach((f, i) => {
 const folder = f.webkitRelativePath?.includes('/') ? f.webkitRelativePath.split('/')[0] : null;
 if (folder) {
@@ -490,14 +535,11 @@ html += `<div class="file-item" style="justify-content:space-between; align-item
 </div>`;
 }
 });
-
 container.innerHTML = html;
 }
 
-// === FUNCIONES CORREGIDAS ===
 function refreshSenderQueueUI() {
 const totalSize = files.reduce((s, f) => s + f.size, 0);
-
 if (files.length === 0) {
 filesReady = false;
 document.getElementById('files-selected').classList.add('hidden');
@@ -505,7 +547,6 @@ document.getElementById('loaded-files-list').classList.add('hidden');
 document.getElementById('files-count').textContent = '';
 return;
 }
-
 document.getElementById('files-selected').classList.remove('hidden');
 const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
 document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
@@ -603,7 +644,7 @@ showToast('🔗 Conectado', 'success');
 document.getElementById('receiver-auth').classList.add('hidden');
 document.getElementById('progress-ui').style.display = 'block';
 document.getElementById('step-indicator').textContent = 'Recibiendo...';
-receiverTransferStartTime = 0; // Resetear timer
+receiverTransferStartTime = 0;
 receiverBytesReceived = 0;
 receiverTotalSize = 0;
 receivedFiles = {};
@@ -644,13 +685,13 @@ else { setStatus(`❌ Error: ${err.type}`, 'err'); }
 });
 }
 
-// === TRANSFERENCIA MEJORADA ===
+// === TRANSFERENCIA ===
 async function startTransfer() {
 if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
 if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
 if (!receiverConnected) return showToast('⏳ Esperando receptor...', 'info');
 
-const filesToSend = [...files]; // Copia de seguridad para historial
+const filesToSend = [...files];
 const foldersToSend = [...selectedFolders];
 const individualFiles = filesToSend.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
 const totalSize = filesToSend.reduce((s, f) => s + f.size, 0);
@@ -661,25 +702,21 @@ document.getElementById('btn-start').disabled = true;
 document.getElementById('btn-start').textContent = '⏳ Preparando...';
 setStatus('📤 Iniciando...', 'wait');
 
-// Enviar carpetas comprimidas
 for (const folderName of foldersToSend) {
 setStatus(`🗜️ Comprimiendo ${folderName}...`, 'wait');
 const zip = new JSZip();
 const folderFiles = filesToSend.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
-
 for (const file of folderFiles) {
 const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
 const arrayBuffer = await file.arrayBuffer();
 zip.file(relativePath, arrayBuffer);
 }
-
 const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 await sendFileAsZip(zipBlob, `${folderName}.zip`, zipBlob.size, totalSize);
 removeSentFolder(folderName);
 await new Promise(r => setTimeout(r, 300));
 }
 
-// Enviar archivos individuales
 for (let i = 0; i < individualFiles.length; i++) {
 await sendFile(individualFiles[i], i + foldersToSend.length, totalSize);
 removeSentFile(individualFiles[i]);
@@ -688,17 +725,15 @@ await new Promise(r => setTimeout(r, 200));
 
 const duration = ((Date.now() - startTime) / 1000).toFixed(1);
 setStatus(`🎉 Completado en ${duration}s`, 'ok');
-showToast('🎉 Exitoso', 'success');
+showToast('🎉 Transferencia completa', 'success');
 document.getElementById('btn-start').textContent = '✅ OK';
 document.getElementById('btn-start').disabled = false;
 
-// Usar la copia para historial
 filesToSend.forEach(f => saveHistory({ type: 'send', fileName: f.webkitRelativePath || f.name, size: formatSize(f.size), time: new Date().toLocaleString(), duration: `${duration}s` }));
 playCompleteSound();
 await clearAllState();
 }
 
-// === Enviar ZIP ===
 async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
 const fileId = `zip-${fileName}-${fileSize}-${Date.now()}`;
 const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
@@ -719,7 +754,6 @@ await new Promise(r => setTimeout(r, 100));
 for (let c = 0; c < totalChunks; c++) {
 const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
 const buffer = await chunk.arrayBuffer();
-
 conn.send({
 type: 'chunk',
 fileId: fileId,
@@ -727,23 +761,19 @@ index: c,
 data: buffer,
 total: totalChunks
 });
-
 bytesTransferred += buffer.byteLength;
 
 const overallProgress = (bytesTransferred / totalSize) * 100;
-const now = Date.now();
-const elapsed = (now - startTime) / 1000 || 1;
+const elapsed = (Date.now() - startTime) / 1000 || 1;
 const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
 if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
-
 updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
 await new Promise(r => setTimeout(r, 200));
 conn.send({ type: 'complete', fileName: fileName });
@@ -765,43 +795,40 @@ conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: 
 bytesTransferred += buffer.byteLength;
 
 const overallProgress = (bytesTransferred / totalSize) * 100;
-const now = Date.now();
-const elapsed = (now - startTime) / 1000 || 1;
+const elapsed = (Date.now() - startTime) / 1000 || 1;
 const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
 if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
-
 if (index === files.length - 1) updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
 await new Promise(r => setTimeout(r, 200));
 conn.send({ type: 'complete', fileName });
 logFile(`✅ ${fileName} enviado`);
 }
 
+// === RECEPTOR CON TEMPORIZADOR CORREGIDO ===
 function handleFileInfo(data) {
-if (!receiverTransferStartTime) {
+// Si es el primer archivo de una nueva ronda, reiniciar el timer
+if (Object.keys(receivedFiles).length === 0) {
 receiverTransferStartTime = Date.now();
 }
-
 receivedFiles[data.fileId] = {
 name: data.fileName,
 size: data.fileSize,
 totalChunks: data.totalChunks,
 chunks: new Array(data.totalChunks),
 received: 0,
-isZip: data.isZip
+isZip: data.isZip,
+fileId: data.fileId   // guardamos id para borrar después
 };
-
 if (!receiverTotalSize) {
 receiverTotalSize = data.totalFilesSize || data.fileSize;
 }
-
 logFile(`📥 ${data.fileName}`);
 updateReceiverProgress(data.fileName, 0);
 if (data.totalChunks === 0) downloadFile(receivedFiles[data.fileId]);
@@ -814,16 +841,17 @@ fd.chunks[data.index] = data.data;
 fd.received++;
 receiverBytesReceived += data.data.byteLength;
 updateReceiverProgress(fd.name, (fd.received / fd.totalChunks) * 100);
-if (fd.received === fd.totalChunks) { logFile(`✓ ${fd.name}: Descargando...`); downloadFile(fd); }
+if (fd.received === fd.totalChunks) {
+logFile(`✓ ${fd.name}: Descargando...`);
+downloadFile(fd);
+}
 }
 
-// === DESCARGA ===
 function downloadFile(fileData) {
 const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
 if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
 const blob = new Blob(validChunks);
 if (!blob.size) { logFile('❌ Blob vacío'); return; }
-
 const url = URL.createObjectURL(blob);
 const a = document.createElement('a');
 a.href = url;
@@ -832,25 +860,28 @@ document.body.appendChild(a);
 a.click();
 document.body.removeChild(a);
 URL.revokeObjectURL(url);
-
 logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
 
+// Liberar memoria y eliminar entrada usando fileId
+delete receivedFiles[fileData.fileId];
 fileData.chunks = null;
-delete receivedFiles[Object.keys(receivedFiles).find(k => receivedFiles[k] === fileData)];
 
 if (Object.keys(receivedFiles).length === 0) {
 const duration = ((Date.now() - receiverTransferStartTime) / 1000).toFixed(1);
 setStatus(`🎉 Completado en ${duration}s`, 'ok');
 playCompleteSound();
 saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
+// Resetear timer para futuras transferencias
+receiverTransferStartTime = 0;
+receiverTotalSize = 0;
+receiverBytesReceived = 0;
 }
 }
 
-function finalizeFile(fileName) { /* log movido a downloadFile */ }
+function finalizeFile(fileName) { /* no necesario */ }
 
 function updateReceiverProgress(fileName, percent) {
 const now = Date.now();
-// FIX: Usar receiverTransferStartTime en lugar de receiverStartTime
 const elapsed = (now - receiverTransferStartTime) / 1000 || 1;
 const speed = receiverBytesReceived / elapsed;
 const remaining = speed > 0 && receiverTotalSize > receiverBytesReceived ? (receiverTotalSize - receiverBytesReceived) / speed : 0;
