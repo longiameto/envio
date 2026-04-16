@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.3</title>
+<title>Comparte Archivos P2P - v8.4</title>
 <!-- Librerías externas (todas gratuitas) -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -179,6 +179,7 @@ let receiverConnected = false;
 let filesReady = false;
 let receiverBytesReceived = 0;
 let receiverStartTime = 0;
+let receiverTransferStartTime = 0; // ← FIX #2: Timer separado para transferencia
 let receiverTotalSize = 0;
 let receivedFiles = {};
 let isDarkMode = true;
@@ -413,7 +414,7 @@ if (entry) await readEntry(entry);
 
 files = allFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
 processSelectedFiles();
-clearFileInputs(); // FIX #1
+clearFileInputs();
 });
 
 dropZone.addEventListener('click', () => {
@@ -428,7 +429,7 @@ document.getElementById('file-input').click();
 function handleFilesSelectedFromDrop(fileList) {
 files = Array.from(fileList);
 processSelectedFiles();
-clearFileInputs(); // FIX #1
+clearFileInputs();
 }
 
 function handleFilesSelected() {
@@ -442,7 +443,7 @@ selectedFolders.add(folder);
 }
 });
 processSelectedFiles();
-clearFileInputs(); // FIX #1
+clearFileInputs();
 }
 
 function processSelectedFiles() {
@@ -462,7 +463,7 @@ renderLoadedFiles();
 }
 }
 
-// === NUEVO: Renderizar lista de archivos cargados con botón eliminar ===
+// === Renderizar lista de archivos cargados con botón eliminar ===
 function renderLoadedFiles() {
 const container = document.getElementById('loaded-files-list');
 if (!container || files.length === 0) {
@@ -505,7 +506,7 @@ setStatus('⏳ Esperando receptor...', 'wait');
 processSelectedFiles();
 }
 renderLoadedFiles();
-clearFileInputs(); // FIX #1
+clearFileInputs();
 }
 
 function removeFolder(folderName) {
@@ -520,7 +521,36 @@ setStatus('⏳ Esperando receptor...', 'wait');
 processSelectedFiles();
 }
 renderLoadedFiles();
-clearFileInputs(); // FIX #1
+clearFileInputs();
+}
+
+// === FIX #1: Helpers para remover archivos/carpetas enviadas ===
+function removeSentFile(fileToRemove) {
+files = files.filter(f => f !== fileToRemove);
+refreshSenderQueueUI();
+}
+
+function removeSentFolder(folderName) {
+files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
+selectedFolders.delete(folderName);
+refreshSenderQueueUI();
+}
+
+function refreshSenderQueueUI() {
+const totalSize = files.reduce((s, f) => s + f.size, 0);
+
+if (files.length === 0) {
+filesReady = false;
+document.getElementById('files-selected').classList.add('hidden');
+document.getElementById('loaded-files-list').classList.add('hidden');
+document.getElementById('files-count').textContent = '';
+return;
+}
+
+document.getElementById('files-selected').classList.remove('hidden');
+const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
+document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
+renderLoadedFiles();
 }
 
 function formatSize(bytes) {
@@ -574,8 +604,8 @@ showToast('🔗 Conectado', 'success');
 document.getElementById('receiver-auth').classList.add('hidden');
 document.getElementById('progress-ui').style.display = 'block';
 document.getElementById('step-indicator').textContent = 'Recibiendo...';
-receiverStartTime = Date.now();
-// FIX #6: Resetear estado del receptor
+// FIX #2: Resetear timer de transferencia (no iniciar aún)
+receiverTransferStartTime = 0;
 receiverBytesReceived = 0;
 receiverTotalSize = 0;
 receivedFiles = {};
@@ -616,11 +646,17 @@ else { setStatus(`❌ Error: ${err.type}`, 'err'); }
 });
 }
 
-// === TRANSFERENCIA MEJORADA CON ZIP EN EMISOR ===
+// === FIX #1: TRANSFERENCIA MEJORADA CON SNAPSHOTS ===
 async function startTransfer() {
 if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
 if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
 if (!receiverConnected) return showToast('⏳ Esperando receptor...', 'info');
+
+// Crear snapshots de lo que se va a enviar
+const filesToSend = [...files];
+const foldersToSend = [...selectedFolders];
+const individualFiles = filesToSend.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
+const totalSize = filesToSend.reduce((s, f) => s + f.size, 0);
 
 startTime = Date.now();
 bytesTransferred = 0;
@@ -628,16 +664,11 @@ document.getElementById('btn-start').disabled = true;
 document.getElementById('btn-start').textContent = '⏳ Preparando...';
 setStatus('📤 Iniciando...', 'wait');
 
-const foldersToSend = [...selectedFolders];
-// FIX #4: Solo archivos individuales (excluir los de carpetas)
-const individualFiles = files.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
-const totalSize = files.reduce((s, f) => s + f.size, 0);
-
 // Enviar carpetas comprimidas
 for (const folderName of foldersToSend) {
 setStatus(`🗜️ Comprimiendo ${folderName}...`, 'wait');
 const zip = new JSZip();
-const folderFiles = files.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
+const folderFiles = filesToSend.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
 
 for (const file of folderFiles) {
 const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
@@ -647,12 +678,14 @@ zip.file(relativePath, arrayBuffer);
 
 const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 await sendFileAsZip(zipBlob, `${folderName}.zip`, zipBlob.size, totalSize);
+removeSentFolder(folderName); // ← FIX #1: Remover carpeta enviada
 await new Promise(r => setTimeout(r, 300));
 }
 
 // Enviar archivos individuales
 for (let i = 0; i < individualFiles.length; i++) {
 await sendFile(individualFiles[i], i + foldersToSend.length, totalSize);
+removeSentFile(individualFiles[i]); // ← FIX #1: Remover archivo enviado
 await new Promise(r => setTimeout(r, 200));
 }
 
@@ -662,7 +695,8 @@ showToast('🎉 Exitoso', 'success');
 document.getElementById('btn-start').textContent = '✅ OK';
 document.getElementById('btn-start').disabled = false;
 
-files.forEach(f => saveHistory({ type: 'send', fileName: f.webkitRelativePath || f.name, size: formatSize(f.size), time: new Date().toLocaleString(), duration: `${duration}s` }));
+// FIX #1: Usar filesToSend para el historial
+filesToSend.forEach(f => saveHistory({ type: 'send', fileName: f.webkitRelativePath || f.name, size: formatSize(f.size), time: new Date().toLocaleString(), duration: `${duration}s` }));
 playCompleteSound();
 await clearAllState();
 }
@@ -699,9 +733,7 @@ total: totalChunks
 
 bytesTransferred += buffer.byteLength;
 
-// FIX #2: Progreso basado en bytes totales
 const overallProgress = (bytesTransferred / totalSize) * 100;
-
 const now = Date.now();
 const elapsed = (now - startTime) / 1000 || 1;
 const speed = bytesTransferred / elapsed;
@@ -711,7 +743,6 @@ const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.fl
 
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
-// FIX #5: Buffer reducido a 1MB
 if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
@@ -736,19 +767,15 @@ const buffer = await chunk.arrayBuffer();
 conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c, data: buffer, total: totalChunks });
 bytesTransferred += buffer.byteLength;
 
-// FIX #2: Progreso basado en bytes totales
 const overallProgress = (bytesTransferred / totalSize) * 100;
-
 const now = Date.now();
 const elapsed = (now - startTime) / 1000 || 1;
 const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
-// FIX #5: Buffer reducido a 1MB
 if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
@@ -759,7 +786,13 @@ conn.send({ type: 'complete', fileName });
 logFile(`✅ ${fileName} enviado`);
 }
 
+// === FIX #2: Iniciar timer en el primer file_info ===
 function handleFileInfo(data) {
+// Iniciar timer de transferencia solo la primera vez
+if (!receiverTransferStartTime) {
+receiverTransferStartTime = Date.now();
+}
+
 receivedFiles[data.fileId] = {
 name: data.fileName,
 size: data.fileSize,
@@ -768,10 +801,12 @@ chunks: new Array(data.totalChunks),
 received: 0,
 isZip: data.isZip
 };
+
 // FIX #3: Solo asignar si no está asignado
 if (!receiverTotalSize) {
 receiverTotalSize = data.totalFilesSize || data.fileSize;
 }
+
 logFile(`📥 ${data.fileName}`);
 updateReceiverProgress(data.fileName, 0);
 if (data.totalChunks === 0) downloadFile(receivedFiles[data.fileId]);
@@ -787,7 +822,7 @@ updateReceiverProgress(fd.name, (fd.received / fd.totalChunks) * 100);
 if (fd.received === fd.totalChunks) { logFile(`✓ ${fd.name}: Descargando...`); downloadFile(fd); }
 }
 
-// === DESCARGA SIMPLIFICADA (sin lógica ZIP en receptor) ===
+// === DESCARGA SIMPLIFICADA ===
 function downloadFile(fileData) {
 const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
 if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
@@ -809,7 +844,8 @@ fileData.chunks = null;
 delete receivedFiles[Object.keys(receivedFiles).find(k => receivedFiles[k] === fileData)];
 
 if (Object.keys(receivedFiles).length === 0) {
-const duration = ((Date.now() - receiverStartTime) / 1000).toFixed(1);
+// FIX #2: Usar receiverTransferStartTime en vez de receiverStartTime
+const duration = ((Date.now() - receiverTransferStartTime) / 1000).toFixed(1);
 setStatus(`🎉 Completado en ${duration}s`, 'ok');
 playCompleteSound();
 saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
