@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.2</title>
+<title>Comparte Archivos P2P - v8.3</title>
 <!-- Librerías externas (todas gratuitas) -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -352,6 +352,14 @@ log.innerHTML += `<div class="file-item">${escapeHtml(msg)}</div>`;
 log.scrollTop = log.scrollHeight;
 }
 
+// === FIX #1: Limpiar inputs de archivos ===
+function clearFileInputs() {
+const fileInput = document.getElementById('file-input');
+const folderInput = document.getElementById('folder-input');
+if (fileInput) fileInput.value = '';
+if (folderInput) folderInput.value = '';
+}
+
 // === DRAG & DROP MEJORADO ===
 function setupDragDrop() {
 const dropZone = document.getElementById('drop-zone');
@@ -405,6 +413,7 @@ if (entry) await readEntry(entry);
 
 files = allFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
 processSelectedFiles();
+clearFileInputs(); // FIX #1
 });
 
 dropZone.addEventListener('click', () => {
@@ -419,6 +428,7 @@ document.getElementById('file-input').click();
 function handleFilesSelectedFromDrop(fileList) {
 files = Array.from(fileList);
 processSelectedFiles();
+clearFileInputs(); // FIX #1
 }
 
 function handleFilesSelected() {
@@ -432,6 +442,7 @@ selectedFolders.add(folder);
 }
 });
 processSelectedFiles();
+clearFileInputs(); // FIX #1
 }
 
 function processSelectedFiles() {
@@ -454,9 +465,9 @@ renderLoadedFiles();
 // === NUEVO: Renderizar lista de archivos cargados con botón eliminar ===
 function renderLoadedFiles() {
 const container = document.getElementById('loaded-files-list');
-if (!container || files.length === 0) { 
-if (container) container.classList.add('hidden'); 
-return; 
+if (!container || files.length === 0) {
+if (container) container.classList.add('hidden');
+return;
 }
 container.classList.remove('hidden');
 
@@ -494,6 +505,7 @@ setStatus('⏳ Esperando receptor...', 'wait');
 processSelectedFiles();
 }
 renderLoadedFiles();
+clearFileInputs(); // FIX #1
 }
 
 function removeFolder(folderName) {
@@ -508,6 +520,7 @@ setStatus('⏳ Esperando receptor...', 'wait');
 processSelectedFiles();
 }
 renderLoadedFiles();
+clearFileInputs(); // FIX #1
 }
 
 function formatSize(bytes) {
@@ -562,7 +575,9 @@ document.getElementById('receiver-auth').classList.add('hidden');
 document.getElementById('progress-ui').style.display = 'block';
 document.getElementById('step-indicator').textContent = 'Recibiendo...';
 receiverStartTime = Date.now();
+// FIX #6: Resetear estado del receptor
 receiverBytesReceived = 0;
+receiverTotalSize = 0;
 receivedFiles = {};
 } else if (data.type === 'auth_fail') {
 showToast('❌ Contraseña incorrecta', 'error');
@@ -614,6 +629,7 @@ document.getElementById('btn-start').textContent = '⏳ Preparando...';
 setStatus('📤 Iniciando...', 'wait');
 
 const foldersToSend = [...selectedFolders];
+// FIX #4: Solo archivos individuales (excluir los de carpetas)
 const individualFiles = files.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
 const totalSize = files.reduce((s, f) => s + f.size, 0);
 
@@ -683,8 +699,9 @@ total: totalChunks
 
 bytesTransferred += buffer.byteLength;
 
-const fileProgress = (c + 1) / totalChunks;
-const overallProgress = fileProgress * 100;
+// FIX #2: Progreso basado en bytes totales
+const overallProgress = (bytesTransferred / totalSize) * 100;
+
 const now = Date.now();
 const elapsed = (now - startTime) / 1000 || 1;
 const speed = bytesTransferred / elapsed;
@@ -694,7 +711,8 @@ const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.fl
 
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
-if (conn.bufferedAmount > 4 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
+// FIX #5: Buffer reducido a 1MB
+if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
 
@@ -718,17 +736,20 @@ const buffer = await chunk.arrayBuffer();
 conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c, data: buffer, total: totalChunks });
 bytesTransferred += buffer.byteLength;
 
-const fileProgress = (c + 1) / totalChunks;
-const overallProgress = ((index + fileProgress) / files.length) * 100;
+// FIX #2: Progreso basado en bytes totales
+const overallProgress = (bytesTransferred / totalSize) * 100;
+
 const now = Date.now();
 const elapsed = (now - startTime) / 1000 || 1;
 const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
-if (conn.bufferedAmount > 4 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
+// FIX #5: Buffer reducido a 1MB
+if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
 
@@ -739,15 +760,18 @@ logFile(`✅ ${fileName} enviado`);
 }
 
 function handleFileInfo(data) {
-receivedFiles[data.fileId] = { 
-name: data.fileName, 
-size: data.fileSize, 
-totalChunks: data.totalChunks, 
-chunks: new Array(data.totalChunks), 
+receivedFiles[data.fileId] = {
+name: data.fileName,
+size: data.fileSize,
+totalChunks: data.totalChunks,
+chunks: new Array(data.totalChunks),
 received: 0,
 isZip: data.isZip
 };
+// FIX #3: Solo asignar si no está asignado
+if (!receiverTotalSize) {
 receiverTotalSize = data.totalFilesSize || data.fileSize;
+}
 logFile(`📥 ${data.fileName}`);
 updateReceiverProgress(data.fileName, 0);
 if (data.totalChunks === 0) downloadFile(receivedFiles[data.fileId]);
