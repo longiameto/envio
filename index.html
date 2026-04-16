@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Comparte Archivos P2P - v8.1</title>
-<!-- Librerías externas (todas gratuitas) -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -377,7 +376,6 @@ const text = currentPassword ? `ID: ${id}\nContraseña: ${currentPassword}` : `I
 navigator.clipboard.writeText(text).then(() => showToast('📋 Copiado', 'success'));
 }
 
-// === CONEXIÓN ===
 function setupConnection() {
 conn.on('data', data => { if (role === 'receive') handleReceiverData(data); });
 conn.on('error', err => { setStatus(`❌ Error: ${err}`, 'err'); showToast('❌ Error de conexión', 'error'); });
@@ -455,7 +453,7 @@ else { setStatus(`❌ Error: ${err.type}`, 'err'); }
 });
 }
 
-// === TRANSFERENCIA CON COMPRESIÓN DE CARPETAS EN EMISOR ===
+// === TRANSFERENCIA CON COMPRESIÓN DE CARPETAS ===
 async function startTransfer() {
 if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
 if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
@@ -467,12 +465,11 @@ document.getElementById('btn-start').disabled = true;
 document.getElementById('btn-start').textContent = '⏳ Preparando...';
 setStatus('📤 Iniciando...', 'wait');
 
-// === Detectar carpetas para comprimir ===
 const foldersToSend = [...selectedFolders];
 const individualFiles = files.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
 const totalSize = files.reduce((s, f) => s + f.size, 0);
 
-// === Enviar carpetas comprimidas ===
+// Enviar carpetas comprimidas
 for (const folderName of foldersToSend) {
 setStatus(`🗜️ Comprimiendo ${folderName}...`, 'wait');
 const zip = new JSZip();
@@ -489,7 +486,7 @@ await sendFileAsZip(zipBlob, `${folderName}.zip`, zipBlob.size, totalSize);
 await new Promise(r => setTimeout(r, 300));
 }
 
-// === Enviar archivos individuales ===
+// Enviar archivos individuales
 for (let i = 0; i < individualFiles.length; i++) {
 await sendFile(individualFiles[i], i + foldersToSend.length, totalSize);
 await new Promise(r => setTimeout(r, 200));
@@ -506,17 +503,20 @@ playCompleteSound();
 await clearAllState();
 }
 
-// === NUEVA FUNCIÓN: Enviar ZIP como archivo único ===
+// === FUNCIÓN CORREGIDA: Enviar ZIP con fileId único ===
 async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
 logFile(`📤 🗜️ ${fileName} (${formatSize(fileSize)})`);
 const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+
+// ✅ FIX: Generar fileId UNA sola vez
+const fileId = `zip-${fileName}-${fileSize}-${Date.now()}`;
 
 conn.send({
 type: 'file_info',
 fileName: fileName,
 fileSize: fileSize,
 totalChunks: totalChunks,
-fileId: `zip-${fileName}-${fileSize}-${Date.now()}`,
+fileId: fileId,  // ← Usar el mismo ID
 totalFilesSize: totalSize,
 isZip: true
 });
@@ -526,7 +526,16 @@ await new Promise(r => setTimeout(r, 100));
 for (let c = 0; c < totalChunks; c++) {
 const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
 const buffer = await chunk.arrayBuffer();
-conn.send({ type: 'chunk', fileId: `zip-${fileName}-${fileSize}-${Date.now()}`, index: c, data: buffer, total: totalChunks });
+
+// ✅ FIX: Reutilizar el mismo fileId
+conn.send({
+type: 'chunk',
+fileId: fileId,  // ← MISMO ID que file_info
+index: c,
+data: buffer,
+total: totalChunks
+});
+
 bytesTransferred += buffer.byteLength;
 
 const fileProgress = (c + 1) / totalChunks;
@@ -537,6 +546,7 @@ const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
 if (conn.bufferedAmount > 4 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
@@ -549,7 +559,6 @@ conn.send({ type: 'complete', fileName: fileName });
 logFile(`✅ 🗜️ ${fileName} enviado`);
 }
 
-// === Función original para archivos individuales ===
 async function sendFile(file, index, totalSize) {
 const fileName = file.webkitRelativePath || file.name;
 const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -585,7 +594,14 @@ logFile(`✅ ${fileName} enviado`);
 }
 
 function handleFileInfo(data) {
-receivedFiles[data.fileId] = { name: data.fileName, size: data.fileSize, totalChunks: data.totalChunks, chunks: new Array(data.totalChunks), received: 0, isZip: data.isZip };
+receivedFiles[data.fileId] = { 
+name: data.fileName, 
+size: data.fileSize, 
+totalChunks: data.totalChunks, 
+chunks: new Array(data.totalChunks), 
+received: 0,
+isZip: data.isZip  // ← Guardar flag isZip
+};
 receiverTotalSize = data.totalFilesSize || data.fileSize;
 logFile(`📥 ${data.fileName}`);
 updateReceiverProgress(data.fileName, 0);
@@ -602,7 +618,6 @@ updateReceiverProgress(fd.name, (fd.received / fd.totalChunks) * 100);
 if (fd.received === fd.totalChunks) { logFile(`✓ ${fd.name}: Descargando...`); downloadFile(fd); }
 }
 
-// === Descarga: ZIP directo o archivo normal ===
 function downloadFile(fileData) {
 try {
 const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
