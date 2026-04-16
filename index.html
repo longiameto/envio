@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.1</title>
+<title>Comparte Archivos P2P - v8.2</title>
 <!-- Librerías externas (todas gratuitas) -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -140,6 +140,8 @@ input[type="file"] { font-size: 16px; }
 <button class="btn-action" onclick="document.getElementById('file-input').click()">📄 Seleccionar Archivos</button>
 <button class="btn-secondary" onclick="document.getElementById('folder-input').click()">📂 Seleccionar Carpeta</button>
 </div>
+<!-- Lista de archivos cargados con botón eliminar -->
+<div id="loaded-files-list" class="hidden" style="margin: 10px 0; max-height: 150px; overflow-y: auto;"></div>
 <div id="files-selected" class="hidden">
 <div class="note" id="files-count"></div>
 <button class="btn-action" id="btn-start" onclick="startTransfer()">🚀 Iniciar</button>
@@ -264,7 +266,6 @@ location.reload();
 }
 }
 
-// === NUEVO: Toggle tema claro/oscuro ===
 function toggleTheme() {
 isDarkMode = !isDarkMode;
 document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
@@ -272,7 +273,6 @@ localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
 showToast(isDarkMode ? '🌙 Modo oscuro' : '☀️ Modo claro', 'success');
 }
 
-// Cargar tema guardado
 function loadTheme() {
 const saved = localStorage.getItem('theme');
 if (saved === 'light') {
@@ -321,15 +321,12 @@ initPeer();
 setupDragDrop();
 }
 
-// ✅ FIX: Agregar validación de null
 function setStatus(msg, type = 'wait') {
 const el = document.getElementById('status');
-if (!el) return; // ← Validación agregada
 el.textContent = msg;
 el.className = `status ${type}`;
 }
 
-// ✅ FIX: Agregar validaciones de null
 function updateProgress(percent, fileName, speed, eta) {
 const progressUI = document.getElementById('progress-ui');
 const progressFill = document.getElementById('progress-fill');
@@ -338,7 +335,7 @@ const progressFile = document.getElementById('progress-file');
 const progressSpeed = document.getElementById('progress-speed');
 const progressEta = document.getElementById('progress-eta');
 
-if (!progressUI || !progressFill || !progressPercent || !progressFile || !progressSpeed || !progressEta) return; // ← Validación agregada
+if (!progressUI || !progressFill || !progressPercent || !progressFile || !progressSpeed || !progressEta) return;
 
 progressUI.style.display = 'block';
 progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
@@ -348,15 +345,14 @@ progressSpeed.textContent = speed;
 progressEta.textContent = eta;
 }
 
-// ✅ FIX: Agregar validación de null
 function logFile(msg) {
 const log = document.getElementById('file-log');
-if (!log) return; // ← Validación agregada
+if (!log) return;
 log.innerHTML += `<div class="file-item">${escapeHtml(msg)}</div>`;
 log.scrollTop = log.scrollHeight;
 }
 
-// === NUEVO: Drag & Drop ===
+// === DRAG & DROP MEJORADO ===
 function setupDragDrop() {
 const dropZone = document.getElementById('drop-zone');
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -371,20 +367,46 @@ dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'));
 ['dragleave', 'drop'].forEach(eventName => {
 dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'));
 });
-dropZone.addEventListener('drop', e => {
-const dt = e.dataTransfer;
-const items = dt.items;
-if (items) {
-// Detectar si son carpetas
-for (let i = 0; i < items.length; i++) {
-if (items[i].webkitGetAsEntry && items[i].webkitGetAsEntry().isDirectory) {
-selectedFolders.add(items[i].webkitGetAsEntry().name);
-}
-}
-}
-handleFilesSelectedFromDrop(dt.files);
+
+dropZone.addEventListener('drop', async e => {
+dropZone.classList.remove('dragover');
+const items = e.dataTransfer.items;
+if (!items) return;
+
+const allFiles = [];
+
+async function readEntry(entry, path = '') {
+if (entry.isFile) {
+return new Promise(resolve => {
+entry.file(file => {
+Object.defineProperty(file, 'webkitRelativePath', { value: path + file.name });
+allFiles.push(file);
+resolve();
 });
-// Click en drop zone abre selector
+});
+} else if (entry.isDirectory) {
+selectedFolders.add(entry.name);
+const reader = entry.createReader();
+await new Promise(resolve => {
+reader.readEntries(async entries => {
+for (const child of entries) {
+await readEntry(child, path + entry.name + '/');
+}
+resolve();
+});
+});
+}
+}
+
+for (let i = 0; i < items.length; i++) {
+const entry = items[i].webkitGetAsEntry?.();
+if (entry) await readEntry(entry);
+}
+
+files = allFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
+processSelectedFiles();
+});
+
 dropZone.addEventListener('click', () => {
 if (selectedFolders.size > 0) {
 document.getElementById('folder-input').click();
@@ -403,7 +425,6 @@ function handleFilesSelected() {
 const fileInput = document.getElementById('file-input');
 const folderInput = document.getElementById('folder-input');
 files = Array.from(fileInput.files).concat(Array.from(folderInput.files));
-// Detectar carpetas seleccionadas
 files.forEach(f => {
 if (f.webkitRelativePath && f.webkitRelativePath.includes('/')) {
 const folder = f.webkitRelativePath.split('/')[0];
@@ -426,7 +447,67 @@ setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
 } else {
 setStatus('⏳ Esperando receptor...', 'wait');
 }
+renderLoadedFiles();
 }
+}
+
+// === NUEVO: Renderizar lista de archivos cargados con botón eliminar ===
+function renderLoadedFiles() {
+const container = document.getElementById('loaded-files-list');
+if (!container || files.length === 0) { 
+if (container) container.classList.add('hidden'); 
+return; 
+}
+container.classList.remove('hidden');
+
+const rendered = new Set();
+let html = '';
+
+files.forEach((f, i) => {
+const folder = f.webkitRelativePath?.includes('/') ? f.webkitRelativePath.split('/')[0] : null;
+if (folder) {
+if (rendered.has(folder)) return;
+rendered.add(folder);
+html += `<div class="file-item" style="justify-content:space-between; align-items:center; padding: 6px 0;">
+<span>📁 ${escapeHtml(folder)}</span>
+<button onclick="removeFolder('${escapeHtml(folder)}')" style="width:auto; padding:4px 10px; background:var(--error); color:white; border-radius:6px; font-size:0.75rem; margin:0; border:none; cursor:pointer;">✕ Eliminar</button>
+</div>`;
+} else {
+html += `<div class="file-item" style="justify-content:space-between; align-items:center; padding: 6px 0;">
+<span>📄 ${escapeHtml(f.name)}</span>
+<button onclick="removeFile(${i})" style="width:auto; padding:4px 10px; background:var(--error); color:white; border-radius:6px; font-size:0.75rem; margin:0; border:none; cursor:pointer;">✕ Eliminar</button>
+</div>`;
+}
+});
+
+container.innerHTML = html;
+}
+
+function removeFile(index) {
+files.splice(index, 1);
+if (files.length === 0) {
+filesReady = false;
+document.getElementById('files-selected').classList.add('hidden');
+document.getElementById('loaded-files-list').classList.add('hidden');
+setStatus('⏳ Esperando receptor...', 'wait');
+} else {
+processSelectedFiles();
+}
+renderLoadedFiles();
+}
+
+function removeFolder(folderName) {
+files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
+selectedFolders.delete(folderName);
+if (files.length === 0) {
+filesReady = false;
+document.getElementById('files-selected').classList.add('hidden');
+document.getElementById('loaded-files-list').classList.add('hidden');
+setStatus('⏳ Esperando receptor...', 'wait');
+} else {
+processSelectedFiles();
+}
+renderLoadedFiles();
 }
 
 function formatSize(bytes) {
@@ -443,7 +524,6 @@ const text = currentPassword ? `ID: ${id}\nContraseña: ${currentPassword}` : `I
 navigator.clipboard.writeText(text).then(() => showToast('📋 Copiado', 'success'));
 }
 
-// === CONEXIÓN (Lógica probada de v4.3) ===
 function setupConnection() {
 conn.on('data', data => { if (role === 'receive') handleReceiverData(data); });
 conn.on('error', err => { setStatus(`❌ Error: ${err}`, 'err'); showToast('❌ Error de conexión', 'error'); });
@@ -521,6 +601,7 @@ else { setStatus(`❌ Error: ${err.type}`, 'err'); }
 });
 }
 
+// === TRANSFERENCIA MEJORADA CON ZIP EN EMISOR ===
 async function startTransfer() {
 if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
 if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
@@ -529,13 +610,33 @@ if (!receiverConnected) return showToast('⏳ Esperando receptor...', 'info');
 startTime = Date.now();
 bytesTransferred = 0;
 document.getElementById('btn-start').disabled = true;
-document.getElementById('btn-start').textContent = '⏳ Enviando...';
+document.getElementById('btn-start').textContent = '⏳ Preparando...';
 setStatus('📤 Iniciando...', 'wait');
 
+const foldersToSend = [...selectedFolders];
+const individualFiles = files.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
 const totalSize = files.reduce((s, f) => s + f.size, 0);
 
-for (let i = 0; i < files.length; i++) {
-await sendFile(files[i], i, totalSize);
+// Enviar carpetas comprimidas
+for (const folderName of foldersToSend) {
+setStatus(`🗜️ Comprimiendo ${folderName}...`, 'wait');
+const zip = new JSZip();
+const folderFiles = files.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
+
+for (const file of folderFiles) {
+const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
+const arrayBuffer = await file.arrayBuffer();
+zip.file(relativePath, arrayBuffer);
+}
+
+const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+await sendFileAsZip(zipBlob, `${folderName}.zip`, zipBlob.size, totalSize);
+await new Promise(r => setTimeout(r, 300));
+}
+
+// Enviar archivos individuales
+for (let i = 0; i < individualFiles.length; i++) {
+await sendFile(individualFiles[i], i + foldersToSend.length, totalSize);
 await new Promise(r => setTimeout(r, 200));
 }
 
@@ -548,6 +649,59 @@ document.getElementById('btn-start').disabled = false;
 files.forEach(f => saveHistory({ type: 'send', fileName: f.webkitRelativePath || f.name, size: formatSize(f.size), time: new Date().toLocaleString(), duration: `${duration}s` }));
 playCompleteSound();
 await clearAllState();
+}
+
+// === NUEVA FUNCIÓN: Enviar ZIP como archivo único ===
+async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
+const fileId = `zip-${fileName}-${fileSize}-${Date.now()}`;
+const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+logFile(`📤 ️ ${fileName} (${formatSize(fileSize)})`);
+
+conn.send({
+type: 'file_info',
+fileName: fileName,
+fileSize: fileSize,
+totalChunks: totalChunks,
+fileId: fileId,
+totalFilesSize: totalSize,
+isZip: true
+});
+
+await new Promise(r => setTimeout(r, 100));
+
+for (let c = 0; c < totalChunks; c++) {
+const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
+const buffer = await chunk.arrayBuffer();
+
+conn.send({
+type: 'chunk',
+fileId: fileId,
+index: c,
+data: buffer,
+total: totalChunks
+});
+
+bytesTransferred += buffer.byteLength;
+
+const fileProgress = (c + 1) / totalChunks;
+const overallProgress = fileProgress * 100;
+const now = Date.now();
+const elapsed = (now - startTime) / 1000 || 1;
+const speed = bytesTransferred / elapsed;
+const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
+const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
+const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+
+updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
+
+if (conn.bufferedAmount > 4 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
+else await new Promise(r => setTimeout(r, 50));
+}
+
+updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
+await new Promise(r => setTimeout(r, 200));
+conn.send({ type: 'complete', fileName: fileName });
+logFile(`✅ 🗜️ ${fileName} enviado`);
 }
 
 async function sendFile(file, index, totalSize) {
@@ -572,7 +726,6 @@ const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
 if (conn.bufferedAmount > 4 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
@@ -586,7 +739,14 @@ logFile(`✅ ${fileName} enviado`);
 }
 
 function handleFileInfo(data) {
-receivedFiles[data.fileId] = { name: data.fileName, size: data.fileSize, totalChunks: data.totalChunks, chunks: new Array(data.totalChunks), received: 0 };
+receivedFiles[data.fileId] = { 
+name: data.fileName, 
+size: data.fileSize, 
+totalChunks: data.totalChunks, 
+chunks: new Array(data.totalChunks), 
+received: 0,
+isZip: data.isZip
+};
 receiverTotalSize = data.totalFilesSize || data.fileSize;
 logFile(`📥 ${data.fileName}`);
 updateReceiverProgress(data.fileName, 0);
@@ -603,53 +763,23 @@ updateReceiverProgress(fd.name, (fd.received / fd.totalChunks) * 100);
 if (fd.received === fd.totalChunks) { logFile(`✓ ${fd.name}: Descargando...`); downloadFile(fd); }
 }
 
-// === NUEVO: Descarga con ZIP para carpetas ===
-async function downloadFile(fileData) {
-try {
+// === DESCARGA SIMPLIFICADA (sin lógica ZIP en receptor) ===
+function downloadFile(fileData) {
 const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
 if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
 const blob = new Blob(validChunks);
 if (!blob.size) { logFile('❌ Blob vacío'); return; }
 
-// === LÓGICA ZIP PARA CARPETAS ===
-let downloadName = fileData.name;
-let downloadBlob = blob;
-
-// Verificar si es parte de una carpeta
-if (fileData.name.includes('/')) {
-const folderName = fileData.name.split('/')[0];
-
-// Si es la primera vez que procesamos esta carpeta, inicializar ZIP
-if (!window.zipBuilders) window.zipBuilders = {};
-if (!window.zipBuilders[folderName]) {
-window.zipBuilders[folderName] = { zip: new JSZip(), files: 0, total: 0 };
-}
-
-const builder = window.zipBuilders[folderName];
-builder.files++;
-
-// Añadir archivo al ZIP
-builder.zip.file(fileData.name, blob);
-
-// Si es el último archivo de la carpeta, generar y descargar ZIP
-if (builder.files >= countFilesInFolder(folderName)) {
-const zipBlob = await builder.zip.generateAsync({ type: 'blob' });
-saveAs(zipBlob, `${folderName}.zip`);
-logFile(`✅ 📦 ${folderName}.zip descargado`);
-delete window.zipBuilders[folderName];
-}
-return;
-}
-// === FIN LÓGICA ZIP ===
-
-// Descarga normal para archivos individuales
 const url = URL.createObjectURL(blob);
 const a = document.createElement('a');
-a.href = url; a.download = downloadName;
-document.body.appendChild(a); a.click();
+a.href = url;
+a.download = fileData.name;
+document.body.appendChild(a);
+a.click();
 document.body.removeChild(a);
 URL.revokeObjectURL(url);
-logFile(`✅ ${downloadName} descargado (${formatSize(blob.size)})`);
+
+logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
 
 fileData.chunks = null;
 delete receivedFiles[Object.keys(receivedFiles).find(k => receivedFiles[k] === fileData)];
@@ -660,12 +790,6 @@ setStatus(`🎉 Completado en ${duration}s`, 'ok');
 playCompleteSound();
 saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
 }
-} catch (e) { logFile(`❌ Error: ${e.message}`); console.error('Download error:', e); }
-}
-
-// Helper para contar archivos en una carpeta
-function countFilesInFolder(folderName) {
-return files.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/')).length;
 }
 
 function finalizeFile(fileName) { /* log movido a downloadFile */ }
