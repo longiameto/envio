@@ -813,7 +813,7 @@ await new Promise(r => setTimeout(r, 100));
 for (let c = 0; c < totalChunks; c++) {
 const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
 const buffer = await chunk.arrayBuffer();
-conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c,  buffer, total: totalChunks });
+conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c, data: buffer, total: totalChunks });
 bytesTransferred += buffer.byteLength;
 
 const overallProgress = (bytesTransferred / totalSize) * 100;
