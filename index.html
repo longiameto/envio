@@ -8,6 +8,7 @@
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root {
 --bg: #0b1120;
@@ -181,7 +182,6 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <button class="btn-danger" onclick="hardReset()">🗑️ Reiniciar</button>
 </div>
 </div>
-
 <script>
 const CHUNK_SIZE = 256 * 1024;
 const DB_NAME = 'P2PTransferDB';
@@ -196,7 +196,7 @@ let filesReady = false;
 let receiverBytesReceived = 0;
 let receiverTransferStartTime = 0; // Timer real de transferencia
 let receiverTotalSize = 0;
-let receivedFiles = {};  // cada entrada tendrá también fileId
+let receivedFiles = {};
 let isDarkMode = true;
 
 const dbPromise = new Promise((resolve, reject) => {
@@ -299,6 +299,7 @@ peer.destroy();
 }
 peer = null;
 conn = null;
+
 // Resetear variables globales
 role = null;
 files = [];
@@ -310,6 +311,7 @@ receiverBytesReceived = 0;
 receiverTransferStartTime = 0;
 receiverTotalSize = 0;
 receivedFiles = {};
+
 // Ocultar todas las interfaces secundarias
 document.getElementById('sender-auth').classList.add('hidden');
 document.getElementById('receiver-auth').classList.add('hidden');
@@ -318,6 +320,7 @@ document.getElementById('progress-ui').style.display = 'none';
 document.getElementById('role-selection').classList.remove('hidden');
 document.getElementById('step-indicator').textContent = 'Paso 1: Selecciona tu rol';
 setStatus('⏳ Selecciona Emisor o Receptor', 'wait');
+
 // Limpiar inputs de archivos y logs
 document.getElementById('file-log').innerHTML = '';
 document.getElementById('loaded-files-list').classList.add('hidden');
@@ -396,6 +399,7 @@ const progressPercent = document.getElementById('progress-percent');
 const progressFile = document.getElementById('progress-file');
 const progressSpeed = document.getElementById('progress-speed');
 const progressEta = document.getElementById('progress-eta');
+
 if (!progressUI) return;
 progressUI.style.display = 'block';
 progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
@@ -439,7 +443,9 @@ dropZone.addEventListener('drop', async e => {
 dropZone.classList.remove('dragover');
 const items = e.dataTransfer.items;
 if (!items) return;
+
 const allFiles = [];
+
 async function readEntry(entry, path = '') {
 if (entry.isFile) {
 return new Promise(resolve => {
@@ -462,14 +468,17 @@ resolve();
 });
 }
 }
+
 for (let i = 0; i < items.length; i++) {
 const entry = items[i].webkitGetAsEntry?.();
 if (entry) await readEntry(entry);
 }
+
 files = allFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
 processSelectedFiles();
 clearFileInputs();
 });
+
 dropZone.addEventListener('click', () => {
 if (selectedFolders.size > 0) {
 document.getElementById('folder-input').click();
@@ -517,8 +526,10 @@ if (container) container.classList.add('hidden');
 return;
 }
 container.classList.remove('hidden');
+
 const rendered = new Set();
 let html = '';
+
 files.forEach((f, i) => {
 const folder = f.webkitRelativePath?.includes('/') ? f.webkitRelativePath.split('/')[0] : null;
 if (folder) {
@@ -535,11 +546,13 @@ html += `<div class="file-item" style="justify-content:space-between; align-item
 </div>`;
 }
 });
+
 container.innerHTML = html;
 }
 
 function refreshSenderQueueUI() {
 const totalSize = files.reduce((s, f) => s + f.size, 0);
+
 if (files.length === 0) {
 filesReady = false;
 document.getElementById('files-selected').classList.add('hidden');
@@ -547,6 +560,7 @@ document.getElementById('loaded-files-list').classList.add('hidden');
 document.getElementById('files-count').textContent = '';
 return;
 }
+
 document.getElementById('files-selected').classList.remove('hidden');
 const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
 document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
@@ -702,21 +716,25 @@ document.getElementById('btn-start').disabled = true;
 document.getElementById('btn-start').textContent = '⏳ Preparando...';
 setStatus('📤 Iniciando...', 'wait');
 
+// Enviar carpetas comprimidas
 for (const folderName of foldersToSend) {
 setStatus(`🗜️ Comprimiendo ${folderName}...`, 'wait');
 const zip = new JSZip();
 const folderFiles = filesToSend.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
+
 for (const file of folderFiles) {
 const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
 const arrayBuffer = await file.arrayBuffer();
 zip.file(relativePath, arrayBuffer);
 }
+
 const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 await sendFileAsZip(zipBlob, `${folderName}.zip`, zipBlob.size, totalSize);
 removeSentFolder(folderName);
 await new Promise(r => setTimeout(r, 300));
 }
 
+// Enviar archivos individuales
 for (let i = 0; i < individualFiles.length; i++) {
 await sendFile(individualFiles[i], i + foldersToSend.length, totalSize);
 removeSentFile(individualFiles[i]);
@@ -754,6 +772,7 @@ await new Promise(r => setTimeout(r, 100));
 for (let c = 0; c < totalChunks; c++) {
 const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
 const buffer = await chunk.arrayBuffer();
+
 conn.send({
 type: 'chunk',
 fileId: fileId,
@@ -761,6 +780,7 @@ index: c,
 data: buffer,
 total: totalChunks
 });
+
 bytesTransferred += buffer.byteLength;
 
 const overallProgress = (bytesTransferred / totalSize) * 100;
@@ -769,11 +789,13 @@ const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
 if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
+
 updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
 await new Promise(r => setTimeout(r, 200));
 conn.send({ type: 'complete', fileName: fileName });
@@ -791,7 +813,7 @@ await new Promise(r => setTimeout(r, 100));
 for (let c = 0; c < totalChunks; c++) {
 const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
 const buffer = await chunk.arrayBuffer();
-conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c, data: buffer, total: totalChunks });
+conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c,  buffer, total: totalChunks });
 bytesTransferred += buffer.byteLength;
 
 const overallProgress = (bytesTransferred / totalSize) * 100;
@@ -800,12 +822,14 @@ const speed = bytesTransferred / elapsed;
 const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
 const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
 const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+
 updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
 
 if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
 else await new Promise(r => setTimeout(r, 50));
 }
-if (index === files.length - 1) updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
+
+// FIX: Eliminar condición problemática - el progreso se actualiza al 100% al final del loop
 await new Promise(r => setTimeout(r, 200));
 conn.send({ type: 'complete', fileName });
 logFile(`✅ ${fileName} enviado`);
@@ -817,6 +841,7 @@ function handleFileInfo(data) {
 if (Object.keys(receivedFiles).length === 0) {
 receiverTransferStartTime = Date.now();
 }
+
 receivedFiles[data.fileId] = {
 name: data.fileName,
 size: data.fileSize,
@@ -826,9 +851,11 @@ received: 0,
 isZip: data.isZip,
 fileId: data.fileId   // guardamos id para borrar después
 };
+
 if (!receiverTotalSize) {
 receiverTotalSize = data.totalFilesSize || data.fileSize;
 }
+
 logFile(`📥 ${data.fileName}`);
 updateReceiverProgress(data.fileName, 0);
 if (data.totalChunks === 0) downloadFile(receivedFiles[data.fileId]);
@@ -852,6 +879,7 @@ const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
 if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
 const blob = new Blob(validChunks);
 if (!blob.size) { logFile('❌ Blob vacío'); return; }
+
 const url = URL.createObjectURL(blob);
 const a = document.createElement('a');
 a.href = url;
@@ -860,6 +888,7 @@ document.body.appendChild(a);
 a.click();
 document.body.removeChild(a);
 URL.revokeObjectURL(url);
+
 logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
 
 // Liberar memoria y eliminar entrada usando fileId
