@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.5 Final</title>
-<!-- Librerías externas (todas gratuitas) -->
+<title>Comparte Archivos P2P - v8.7 (Sin límites)</title>
+<!-- Librerías externas -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -61,7 +61,6 @@ button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; 
 .note { font-size: 0.75rem; color: var(--text); opacity: 0.7; margin-top: 6px; text-align: center; }
 .step-indicator { text-align: center; margin-bottom: 15px; padding: 8px; background: var(--bg); border-radius: 8px; font-size: 0.9rem; color: var(--accent); font-weight: 600; }
 .file-select-buttons { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
-/* Drag & Drop - TAMAÑO MEJORADO */
 .drop-zone {
 border: 2px dashed var(--border);
 border-radius: 10px;
@@ -76,10 +75,7 @@ flex-direction: column;
 justify-content: center;
 align-items: center;
 }
-.drop-zone.dragover {
-border-color: var(--accent);
-background: rgba(59, 130, 246, 0.1);
-}
+.drop-zone.dragover { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); }
 .drop-zone p { margin: 5px 0; color: var(--text); opacity: 0.8; }
 .drop-zone .big-icon { font-size: 2rem; margin-bottom: 8px; }
 .history-container { margin-top: 15px; background: var(--bg); border-radius: 10px; padding: 10px; max-height: 150px; overflow-y: auto; }
@@ -95,7 +91,6 @@ background: rgba(59, 130, 246, 0.1);
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .button-group { display: flex; gap: 10px; margin-top: 12px; }
 .button-group button { margin-top: 0; }
-/* Mobile optimizations */
 @media (max-width: 480px) {
 .container { padding: 1rem; }
 .btn-role { padding: 12px; font-size: 1rem; }
@@ -103,9 +98,6 @@ input, button { padding: 10px; font-size: 0.9rem; }
 .drop-zone { min-height: 140px; padding: 20px; }
 }
 </style>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 </head>
 <body>
 <div class="toast-container" id="toast-container"></div>
@@ -138,7 +130,6 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <div class="qr-container" id="qr-code"></div>
 <button class="btn-secondary" onclick="copyId()">📋 Copiar ID</button>
 <div class="note">Escanea o comparte el ID</div>
-<!-- Drag & Drop Zone mejorada -->
 <div class="drop-zone" id="drop-zone">
 <div class="big-icon">📁📂</div>
 <p>Arrastra archivos o carpetas aquí</p>
@@ -150,7 +141,6 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <button class="btn-action" onclick="document.getElementById('file-input').click()">📄 Seleccionar Archivos</button>
 <button class="btn-secondary" onclick="document.getElementById('folder-input').click()">📂 Seleccionar Carpeta</button>
 </div>
-<!-- Lista de archivos cargados -->
 <div id="loaded-files-list" class="hidden" style="margin: 10px 0; max-height: 150px; overflow-y: auto;"></div>
 <div id="files-selected" class="hidden">
 <div class="note" id="files-count"></div>
@@ -182,6 +172,7 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <button class="btn-danger" onclick="hardReset()">🗑️ Reiniciar</button>
 </div>
 </div>
+
 <script>
 const CHUNK_SIZE = 256 * 1024;
 const DB_NAME = 'P2PTransferDB';
@@ -194,748 +185,726 @@ let currentPassword = '';
 let receiverConnected = false;
 let filesReady = false;
 let receiverBytesReceived = 0;
-let receiverTransferStartTime = 0; // Timer real de transferencia
+let receiverTransferStartTime = 0;
 let receiverTotalSize = 0;
-let receivedFiles = {};
+let receivedFiles = {};  // Ahora cada entrada tendrá: { name, size, totalChunks, received, writableStream, fileHandle, receivedBytes }
 let isDarkMode = true;
 
+// Detectar soporte de File System Access API
+const supportsFileSystemAccess = 'showSaveFilePicker' in window;
+
+if (!supportsFileSystemAccess) {
+    showToast('⚠️ Tu navegador no soporta guardado progresivo. Los archivos grandes pueden fallar.', 'error');
+}
+
 const dbPromise = new Promise((resolve, reject) => {
-const req = indexedDB.open(DB_NAME, 1);
-req.onupgradeneeded = e => e.target.result.createObjectStore('transferState', { keyPath: 'id' });
-req.onsuccess = e => resolve(e.target.result);
-req.onerror = e => reject(e);
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('transferState', { keyPath: 'id' });
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e);
 });
 
 async function clearAllState() {
-try {
-const db = await dbPromise;
-const tx = db.transaction('transferState', 'readwrite');
-await tx.objectStore('transferState').clear();
-localStorage.removeItem(SESSION_KEY);
-} catch (e) { console.error('Clear error:', e); }
+    try {
+        const db = await dbPromise;
+        const tx = db.transaction('transferState', 'readwrite');
+        await tx.objectStore('transferState').clear();
+        localStorage.removeItem(SESSION_KEY);
+    } catch (e) { console.error('Clear error:', e); }
 }
 
 function escapeHtml(str) {
-if (!str) return '';
-return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
 function saveHistory(entry) {
-let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-history.unshift(entry);
-if (history.length > 20) history = history.slice(0, 20);
-localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-renderHistory();
+    let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    history.unshift(entry);
+    if (history.length > 20) history = history.slice(0, 20);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    renderHistory();
 }
 
 function renderHistory() {
-const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-const list = document.getElementById('history-list');
-if (history.length === 0) {
-list.innerHTML = '<div style="color:var(--text); opacity:0.7">Sin transferencias</div>';
-return;
-}
-list.innerHTML = history.map(h => `
-<div class="history-item">
-<div style="display:flex; justify-content:space-between;">
-<span>${h.type === 'send' ? '📤' : '📥'} ${escapeHtml(h.fileName)}</span>
-<span class="history-time">${escapeHtml(h.time)}</span>
-</div>
-<div style="color:var(--text); opacity:0.7; font-size:0.75rem;">
-${escapeHtml(h.size)} • ${escapeHtml(h.duration)}
-</div>
-</div>
-`).join('');
-document.getElementById('history-ui').classList.remove('hidden');
+    const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    const list = document.getElementById('history-list');
+    if (history.length === 0) {
+        list.innerHTML = '<div style="color:var(--text); opacity:0.7">Sin transferencias</div>';
+        return;
+    }
+    list.innerHTML = history.map(h => `
+        <div class="history-item">
+            <div style="display:flex; justify-content:space-between;">
+                <span>${h.type === 'send' ? '📤' : '📥'} ${escapeHtml(h.fileName)}</span>
+                <span class="history-time">${escapeHtml(h.time)}</span>
+            </div>
+            <div style="color:var(--text); opacity:0.7; font-size:0.75rem;">
+                ${escapeHtml(h.size)} • ${escapeHtml(h.duration)}
+            </div>
+        </div>
+    `).join('');
+    document.getElementById('history-ui').classList.remove('hidden');
 }
 
 function clearHistory() {
-if (confirm('¿Eliminar todo el historial de transferencias?')) {
-localStorage.removeItem(HISTORY_KEY);
-renderHistory();
-showToast('Historial borrado', 'success');
-}
+    if (confirm('¿Eliminar todo el historial de transferencias?')) {
+        localStorage.removeItem(HISTORY_KEY);
+        renderHistory();
+        showToast('Historial borrado', 'success');
+    }
 }
 
 function playCompleteSound() {
-try {
-const ctx = new (window.AudioContext || window.webkitAudioContext)();
-const osc = ctx.createOscillator();
-const gain = ctx.createGain();
-osc.connect(gain); gain.connect(ctx.destination);
-osc.frequency.setValueAtTime(523.25, ctx.currentTime);
-osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
-osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2);
-gain.gain.setValueAtTime(0.3, ctx.currentTime);
-gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
-} catch (e) {}
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+    } catch (e) {}
 }
 
 function showToast(msg, type = 'info') {
-const container = document.getElementById('toast-container');
-const toast = document.createElement('div');
-toast.className = `toast ${type}`;
-toast.textContent = msg;
-container.appendChild(toast);
-setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
 }
 
 function hardReset() {
-if (confirm('⚠️ ¿Borrar todo el estado y recargar?')) {
-if (peer && !peer.destroyed) peer.destroy();
-clearAllState();
-localStorage.removeItem(HISTORY_KEY);
-location.reload();
-}
+    if (confirm('⚠️ ¿Borrar todo el estado y recargar?')) {
+        if (peer && !peer.destroyed) peer.destroy();
+        clearAllState();
+        localStorage.removeItem(HISTORY_KEY);
+        location.reload();
+    }
 }
 
-// NUEVA FUNCIÓN: Volver a la selección de rol sin recargar
 function goBackToRoleSelection() {
-if (confirm('¿Volver atrás? Se perderá la conexión actual y los archivos seleccionados.')) {
-// Cerrar peer y conexión
-if (peer && !peer.destroyed) {
-peer.destroy();
-}
-peer = null;
-conn = null;
-
-// Resetear variables globales
-role = null;
-files = [];
-selectedFolders.clear();
-filesReady = false;
-receiverConnected = false;
-currentPassword = '';
-receiverBytesReceived = 0;
-receiverTransferStartTime = 0;
-receiverTotalSize = 0;
-receivedFiles = {};
-
-// Ocultar todas las interfaces secundarias
-document.getElementById('sender-auth').classList.add('hidden');
-document.getElementById('receiver-auth').classList.add('hidden');
-document.getElementById('sender-ui').classList.add('hidden');
-document.getElementById('progress-ui').style.display = 'none';
-document.getElementById('role-selection').classList.remove('hidden');
-document.getElementById('step-indicator').textContent = 'Paso 1: Selecciona tu rol';
-setStatus('⏳ Selecciona Emisor o Receptor', 'wait');
-
-// Limpiar inputs de archivos y logs
-document.getElementById('file-log').innerHTML = '';
-document.getElementById('loaded-files-list').classList.add('hidden');
-document.getElementById('files-selected').classList.add('hidden');
-document.getElementById('btn-start').disabled = false;
-document.getElementById('btn-start').textContent = '🚀 Iniciar';
-clearFileInputs();
-}
+    if (confirm('¿Volver atrás? Se perderá la conexión actual y los archivos seleccionados.')) {
+        if (peer && !peer.destroyed) peer.destroy();
+        peer = null; conn = null;
+        role = null; files = []; selectedFolders.clear();
+        filesReady = false; receiverConnected = false; currentPassword = '';
+        receiverBytesReceived = 0; receiverTransferStartTime = 0; receiverTotalSize = 0;
+        // Cerrar streams abiertos si los hay
+        for (const key in receivedFiles) {
+            if (receivedFiles[key].writableStream) receivedFiles[key].writableStream.close();
+        }
+        receivedFiles = {};
+        document.getElementById('sender-auth').classList.add('hidden');
+        document.getElementById('receiver-auth').classList.add('hidden');
+        document.getElementById('sender-ui').classList.add('hidden');
+        document.getElementById('progress-ui').style.display = 'none';
+        document.getElementById('role-selection').classList.remove('hidden');
+        document.getElementById('step-indicator').textContent = 'Paso 1: Selecciona tu rol';
+        setStatus('⏳ Selecciona Emisor o Receptor', 'wait');
+        document.getElementById('file-log').innerHTML = '';
+        document.getElementById('loaded-files-list').classList.add('hidden');
+        document.getElementById('files-selected').classList.add('hidden');
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-start').textContent = '🚀 Iniciar';
+        clearFileInputs();
+    }
 }
 
 function toggleTheme() {
-isDarkMode = !isDarkMode;
-document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
-localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-showToast(isDarkMode ? '🌙 Modo oscuro' : '☀️ Modo claro', 'success');
+    isDarkMode = !isDarkMode;
+    document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    showToast(isDarkMode ? '🌙 Modo oscuro' : '☀️ Modo claro', 'success');
 }
 
 function loadTheme() {
-const saved = localStorage.getItem('theme');
-if (saved === 'light') {
-isDarkMode = false;
-document.documentElement.setAttribute('data-theme', 'light');
-}
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light') {
+        isDarkMode = false;
+        document.documentElement.setAttribute('data-theme', 'light');
+    }
 }
 
 function setRole(r) {
-role = r;
-document.getElementById('btn-send').classList.toggle('active', r === 'send');
-document.getElementById('btn-receive').classList.toggle('active', r === 'receive');
-document.getElementById('role-selection').classList.add('hidden');
-document.getElementById('step-indicator').textContent = `Paso 2: ${r === 'send' ? 'Configura tu ID' : 'Conéctate'}`;
-if (r === 'send') {
-document.getElementById('sender-auth').classList.remove('hidden');
-setStatus('🔐 Ingresa tu ID', 'wait');
-} else {
-document.getElementById('receiver-auth').classList.remove('hidden');
-setStatus('🔑 Ingresa ID del emisor', 'wait');
-}
+    role = r;
+    document.getElementById('btn-send').classList.toggle('active', r === 'send');
+    document.getElementById('btn-receive').classList.toggle('active', r === 'receive');
+    document.getElementById('role-selection').classList.add('hidden');
+    document.getElementById('step-indicator').textContent = `Paso 2: ${r === 'send' ? 'Configura tu ID' : 'Conéctate'}`;
+    if (r === 'send') {
+        document.getElementById('sender-auth').classList.remove('hidden');
+        setStatus('🔐 Ingresa tu ID', 'wait');
+    } else {
+        document.getElementById('receiver-auth').classList.remove('hidden');
+        setStatus('🔑 Ingresa ID del emisor', 'wait');
+    }
 }
 
 function setupSender() {
-const idInput = document.getElementById('sender-id').value.trim();
-const pwd = document.getElementById('sender-password').value;
-if (idInput.length < 6 || idInput.length > 32) return showToast('❌ ID: 6-32 caracteres', 'error');
-if (!/^[a-zA-Z0-9_-]+$/.test(idInput)) return showToast('❌ Solo letras, números y guiones', 'error');
-transferId = `p2p-${idInput}`;
-currentPassword = pwd;
-localStorage.setItem(SESSION_KEY, JSON.stringify({ role: 'send', id: idInput, timestamp: Date.now(), hadPwd: !!pwd }));
-document.getElementById('sender-auth').classList.add('hidden');
-document.getElementById('sender-ui').classList.remove('hidden');
-document.getElementById('my-id-display').textContent = `Tu ID: ${idInput}`;
-document.getElementById('step-indicator').textContent = 'Paso 3: Selecciona archivos';
-document.getElementById('qr-code').innerHTML = '';
-if (typeof QRCode !== 'undefined') {
-new QRCode(document.getElementById('qr-code'), {
-text: idInput, width: 120, height: 120,
-colorDark: isDarkMode ? "#0f172a" : "#1e293b",
-colorLight: isDarkMode ? "#ffffff" : "#f8fafc",
-correctLevel: QRCode.CorrectLevel.L
-});
-}
-initPeer();
-setupDragDrop();
+    const idInput = document.getElementById('sender-id').value.trim();
+    const pwd = document.getElementById('sender-password').value;
+    if (idInput.length < 6 || idInput.length > 32) return showToast('❌ ID: 6-32 caracteres', 'error');
+    if (!/^[a-zA-Z0-9_-]+$/.test(idInput)) return showToast('❌ Solo letras, números y guiones', 'error');
+    transferId = `p2p-${idInput}`;
+    currentPassword = pwd;
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ role: 'send', id: idInput, timestamp: Date.now(), hadPwd: !!pwd }));
+    document.getElementById('sender-auth').classList.add('hidden');
+    document.getElementById('sender-ui').classList.remove('hidden');
+    document.getElementById('my-id-display').textContent = `Tu ID: ${idInput}`;
+    document.getElementById('step-indicator').textContent = 'Paso 3: Selecciona archivos';
+    document.getElementById('qr-code').innerHTML = '';
+    if (typeof QRCode !== 'undefined') {
+        new QRCode(document.getElementById('qr-code'), {
+            text: idInput, width: 120, height: 120,
+            colorDark: isDarkMode ? "#0f172a" : "#1e293b",
+            colorLight: isDarkMode ? "#ffffff" : "#f8fafc",
+            correctLevel: QRCode.CorrectLevel.L
+        });
+    }
+    initPeer();
+    setupDragDrop();
 }
 
 function setStatus(msg, type = 'wait') {
-const el = document.getElementById('status');
-el.textContent = msg;
-el.className = `status ${type}`;
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = `status ${type}`;
 }
 
 function updateProgress(percent, fileName, speed, eta) {
-const progressUI = document.getElementById('progress-ui');
-const progressFill = document.getElementById('progress-fill');
-const progressPercent = document.getElementById('progress-percent');
-const progressFile = document.getElementById('progress-file');
-const progressSpeed = document.getElementById('progress-speed');
-const progressEta = document.getElementById('progress-eta');
-
-if (!progressUI) return;
-progressUI.style.display = 'block';
-progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
-progressPercent.textContent = `${Math.min(100, Math.max(0, percent)).toFixed(1)}%`;
-progressFile.textContent = fileName;
-progressSpeed.textContent = speed;
-progressEta.textContent = eta;
+    const progressUI = document.getElementById('progress-ui');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPercent = document.getElementById('progress-percent');
+    const progressFile = document.getElementById('progress-file');
+    const progressSpeed = document.getElementById('progress-speed');
+    const progressEta = document.getElementById('progress-eta');
+    if (!progressUI) return;
+    progressUI.style.display = 'block';
+    progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    progressPercent.textContent = `${Math.min(100, Math.max(0, percent)).toFixed(1)}%`;
+    progressFile.textContent = fileName;
+    progressSpeed.textContent = speed;
+    progressEta.textContent = eta;
 }
 
 function logFile(msg) {
-const log = document.getElementById('file-log');
-if (!log) return;
-log.innerHTML += `<div class="file-item">${escapeHtml(msg)}</div>`;
-log.scrollTop = log.scrollHeight;
+    const log = document.getElementById('file-log');
+    if (!log) return;
+    log.innerHTML += `<div class="file-item">${escapeHtml(msg)}</div>`;
+    log.scrollTop = log.scrollHeight;
 }
 
 function clearFileInputs() {
-const fileInput = document.getElementById('file-input');
-const folderInput = document.getElementById('folder-input');
-if (fileInput) fileInput.value = '';
-if (folderInput) folderInput.value = '';
+    const fileInput = document.getElementById('file-input');
+    const folderInput = document.getElementById('folder-input');
+    if (fileInput) fileInput.value = '';
+    if (folderInput) folderInput.value = '';
 }
 
 // === DRAG & DROP ===
 function setupDragDrop() {
-const dropZone = document.getElementById('drop-zone');
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-dropZone.addEventListener(eventName, e => {
-e.preventDefault();
-e.stopPropagation();
-});
-});
-['dragenter', 'dragover'].forEach(eventName => {
-dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'));
-});
-['dragleave', 'drop'].forEach(eventName => {
-dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'));
-});
-
-dropZone.addEventListener('drop', async e => {
-dropZone.classList.remove('dragover');
-const items = e.dataTransfer.items;
-if (!items) return;
-
-const allFiles = [];
-
-async function readEntry(entry, path = '') {
-if (entry.isFile) {
-return new Promise(resolve => {
-entry.file(file => {
-Object.defineProperty(file, 'webkitRelativePath', { value: path + file.name });
-allFiles.push(file);
-resolve();
-});
-});
-} else if (entry.isDirectory) {
-selectedFolders.add(entry.name);
-const reader = entry.createReader();
-await new Promise(resolve => {
-reader.readEntries(async entries => {
-for (const child of entries) {
-await readEntry(child, path + entry.name + '/');
-}
-resolve();
-});
-});
-}
-}
-
-for (let i = 0; i < items.length; i++) {
-const entry = items[i].webkitGetAsEntry?.();
-if (entry) await readEntry(entry);
-}
-
-files = allFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
-processSelectedFiles();
-clearFileInputs();
-});
-
-dropZone.addEventListener('click', () => {
-if (selectedFolders.size > 0) {
-document.getElementById('folder-input').click();
-} else {
-document.getElementById('file-input').click();
-}
-});
+    const dropZone = document.getElementById('drop-zone');
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); });
+    });
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'));
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'));
+    });
+    dropZone.addEventListener('drop', async e => {
+        dropZone.classList.remove('dragover');
+        const items = e.dataTransfer.items;
+        if (!items) return;
+        const allFiles = [];
+        async function readEntry(entry, path = '') {
+            if (entry.isFile) {
+                return new Promise(resolve => {
+                    entry.file(file => {
+                        Object.defineProperty(file, 'webkitRelativePath', { value: path + file.name });
+                        allFiles.push(file);
+                        resolve();
+                    });
+                });
+            } else if (entry.isDirectory) {
+                selectedFolders.add(entry.name);
+                const reader = entry.createReader();
+                await new Promise(resolve => {
+                    reader.readEntries(async entries => {
+                        for (const child of entries) await readEntry(child, path + entry.name + '/');
+                        resolve();
+                    });
+                });
+            }
+        }
+        for (let i = 0; i < items.length; i++) {
+            const entry = items[i].webkitGetAsEntry?.();
+            if (entry) await readEntry(entry);
+        }
+        files = allFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
+        processSelectedFiles();
+        clearFileInputs();
+    });
+    dropZone.addEventListener('click', () => {
+        if (selectedFolders.size > 0) document.getElementById('folder-input').click();
+        else document.getElementById('file-input').click();
+    });
 }
 
 function handleFilesSelected() {
-const fileInput = document.getElementById('file-input');
-const folderInput = document.getElementById('folder-input');
-files = Array.from(fileInput.files).concat(Array.from(folderInput.files));
-files.forEach(f => {
-if (f.webkitRelativePath && f.webkitRelativePath.includes('/')) {
-const folder = f.webkitRelativePath.split('/')[0];
-selectedFolders.add(folder);
-}
-});
-processSelectedFiles();
-clearFileInputs();
+    const fileInput = document.getElementById('file-input');
+    const folderInput = document.getElementById('folder-input');
+    files = Array.from(fileInput.files).concat(Array.from(folderInput.files));
+    files.forEach(f => {
+        if (f.webkitRelativePath && f.webkitRelativePath.includes('/')) {
+            const folder = f.webkitRelativePath.split('/')[0];
+            selectedFolders.add(folder);
+        }
+    });
+    processSelectedFiles();
+    clearFileInputs();
 }
 
 function processSelectedFiles() {
-files = files.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
-if (files.length > 0) {
-filesReady = true;
-document.getElementById('files-selected').classList.remove('hidden');
-const totalSize = files.reduce((s, f) => s + f.size, 0);
-const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
-document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
-if (receiverConnected) {
-setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
-} else {
-setStatus('⏳ Esperando receptor...', 'wait');
-}
-renderLoadedFiles();
-}
+    files = files.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
+    if (files.length > 0) {
+        filesReady = true;
+        document.getElementById('files-selected').classList.remove('hidden');
+        const totalSize = files.reduce((s, f) => s + f.size, 0);
+        const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
+        document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
+        if (receiverConnected) setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
+        else setStatus('⏳ Esperando receptor...', 'wait');
+        renderLoadedFiles();
+    }
 }
 
 function renderLoadedFiles() {
-const container = document.getElementById('loaded-files-list');
-if (!container || files.length === 0) {
-if (container) container.classList.add('hidden');
-return;
-}
-container.classList.remove('hidden');
-
-const rendered = new Set();
-let html = '';
-
-files.forEach((f, i) => {
-const folder = f.webkitRelativePath?.includes('/') ? f.webkitRelativePath.split('/')[0] : null;
-if (folder) {
-if (rendered.has(folder)) return;
-rendered.add(folder);
-html += `<div class="file-item" style="justify-content:space-between; align-items:center; padding: 6px 0;">
-<span>📁 ${escapeHtml(folder)}</span>
-<button onclick="removeFolder('${escapeHtml(folder)}')" style="width:auto; padding:4px 10px; background:var(--error); color:white; border-radius:6px; font-size:0.75rem; margin:0; border:none; cursor:pointer;">✕ Eliminar</button>
-</div>`;
-} else {
-html += `<div class="file-item" style="justify-content:space-between; align-items:center; padding: 6px 0;">
-<span>📄 ${escapeHtml(f.name)}</span>
-<button onclick="removeFile(${i})" style="width:auto; padding:4px 10px; background:var(--error); color:white; border-radius:6px; font-size:0.75rem; margin:0; border:none; cursor:pointer;">✕ Eliminar</button>
-</div>`;
-}
-});
-
-container.innerHTML = html;
+    const container = document.getElementById('loaded-files-list');
+    if (!container || files.length === 0) { if (container) container.classList.add('hidden'); return; }
+    container.classList.remove('hidden');
+    const rendered = new Set();
+    let html = '';
+    files.forEach((f, i) => {
+        const folder = f.webkitRelativePath?.includes('/') ? f.webkitRelativePath.split('/')[0] : null;
+        if (folder) {
+            if (rendered.has(folder)) return;
+            rendered.add(folder);
+            html += `<div class="file-item" style="justify-content:space-between; align-items:center; padding: 6px 0;">
+                <span>📁 ${escapeHtml(folder)}</span>
+                <button onclick="removeFolder('${escapeHtml(folder)}')" style="width:auto; padding:4px 10px; background:var(--error); color:white; border-radius:6px; font-size:0.75rem; margin:0; border:none; cursor:pointer;">✕ Eliminar</button>
+            </div>`;
+        } else {
+            html += `<div class="file-item" style="justify-content:space-between; align-items:center; padding: 6px 0;">
+                <span>📄 ${escapeHtml(f.name)}</span>
+                <button onclick="removeFile(${i})" style="width:auto; padding:4px 10px; background:var(--error); color:white; border-radius:6px; font-size:0.75rem; margin:0; border:none; cursor:pointer;">✕ Eliminar</button>
+            </div>`;
+        }
+    });
+    container.innerHTML = html;
 }
 
 function refreshSenderQueueUI() {
-const totalSize = files.reduce((s, f) => s + f.size, 0);
-
-if (files.length === 0) {
-filesReady = false;
-document.getElementById('files-selected').classList.add('hidden');
-document.getElementById('loaded-files-list').classList.add('hidden');
-document.getElementById('files-count').textContent = '';
-return;
+    const totalSize = files.reduce((s, f) => s + f.size, 0);
+    if (files.length === 0) {
+        filesReady = false;
+        document.getElementById('files-selected').classList.add('hidden');
+        document.getElementById('loaded-files-list').classList.add('hidden');
+        document.getElementById('files-count').textContent = '';
+        return;
+    }
+    document.getElementById('files-selected').classList.remove('hidden');
+    const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
+    document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
+    renderLoadedFiles();
 }
 
-document.getElementById('files-selected').classList.remove('hidden');
-const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
-document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
-renderLoadedFiles();
-}
-
-function removeSentFile(fileToRemove) {
-files = files.filter(f => f !== fileToRemove);
-refreshSenderQueueUI();
-}
-
-function removeSentFolder(folderName) {
-files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
-selectedFolders.delete(folderName);
-refreshSenderQueueUI();
-}
-
-function removeFile(index) {
-files.splice(index, 1);
-if (files.length === 0) {
-filesReady = false;
-document.getElementById('files-selected').classList.add('hidden');
-document.getElementById('loaded-files-list').classList.add('hidden');
-setStatus('⏳ Esperando receptor...', 'wait');
-} else {
-processSelectedFiles();
-}
-renderLoadedFiles();
-clearFileInputs();
-}
-
-function removeFolder(folderName) {
-files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
-selectedFolders.delete(folderName);
-if (files.length === 0) {
-filesReady = false;
-document.getElementById('files-selected').classList.add('hidden');
-document.getElementById('loaded-files-list').classList.add('hidden');
-setStatus('⏳ Esperando receptor...', 'wait');
-} else {
-processSelectedFiles();
-}
-renderLoadedFiles();
-clearFileInputs();
-}
+function removeSentFile(fileToRemove) { files = files.filter(f => f !== fileToRemove); refreshSenderQueueUI(); }
+function removeSentFolder(folderName) { files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/'))); selectedFolders.delete(folderName); refreshSenderQueueUI(); }
+function removeFile(index) { files.splice(index, 1); if (files.length === 0) { filesReady = false; document.getElementById('files-selected').classList.add('hidden'); document.getElementById('loaded-files-list').classList.add('hidden'); setStatus('⏳ Esperando receptor...', 'wait'); } else processSelectedFiles(); renderLoadedFiles(); clearFileInputs(); }
+function removeFolder(folderName) { files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/'))); selectedFolders.delete(folderName); if (files.length === 0) { filesReady = false; document.getElementById('files-selected').classList.add('hidden'); document.getElementById('loaded-files-list').classList.add('hidden'); setStatus('⏳ Esperando receptor...', 'wait'); } else processSelectedFiles(); renderLoadedFiles(); clearFileInputs(); }
 
 function formatSize(bytes) {
-if (!bytes) return '0 Bytes';
-const k = 1024;
-const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-const i = Math.floor(Math.log(bytes) / Math.log(k));
-return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+    if (!bytes) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
 }
 
 function copyId() {
-const id = document.getElementById('sender-id').value;
-const text = currentPassword ? `ID: ${id}\nContraseña: ${currentPassword}` : `ID: ${id}`;
-navigator.clipboard.writeText(text).then(() => showToast('📋 Copiado', 'success'));
+    const id = document.getElementById('sender-id').value;
+    const text = currentPassword ? `ID: ${id}\nContraseña: ${currentPassword}` : `ID: ${id}`;
+    navigator.clipboard.writeText(text).then(() => showToast('📋 Copiado', 'success'));
 }
 
 function setupConnection() {
-conn.on('data', data => { if (role === 'receive') handleReceiverData(data); });
-conn.on('error', err => { setStatus(`❌ Error: ${err}`, 'err'); showToast('❌ Error de conexión', 'error'); });
-conn.on('close', () => { receiverConnected = false; setStatus('🔌 Desconectado', 'wait'); });
-conn.on('open', () => {
-if (role === 'send') {
-conn.on('data', handleSenderData);
-setStatus('🔐 Esperando autenticación...', 'wait');
-} else {
-conn.send({ type: 'auth', password: currentPassword });
-setStatus('🔐 Autenticando...', 'wait');
-}
-});
+    conn.on('data', data => { if (role === 'receive') handleReceiverData(data); });
+    conn.on('error', err => { setStatus(`❌ Error: ${err}`, 'err'); showToast('❌ Error de conexión', 'error'); });
+    conn.on('close', () => { receiverConnected = false; setStatus('🔌 Desconectado', 'wait'); });
+    conn.on('open', () => {
+        if (role === 'send') {
+            conn.on('data', handleSenderData);
+            setStatus('🔐 Esperando autenticación...', 'wait');
+        } else {
+            conn.send({ type: 'auth', password: currentPassword });
+            setStatus('🔐 Autenticando...', 'wait');
+        }
+    });
 }
 
 function handleSenderData(data) {
-if (data.type === 'auth') {
-if (currentPassword && data.password !== currentPassword) {
-conn.send({ type: 'auth_fail' });
-setTimeout(() => conn.close(), 100);
-return showToast('❌ Contraseña incorrecta', 'error');
-}
-conn.send({ type: 'auth_ok' });
-receiverConnected = true;
-setStatus('✅ Receptor conectado', 'ok');
-showToast('🔗 Conectado', 'success');
-if (filesReady) setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
-}
+    if (data.type === 'auth') {
+        if (currentPassword && data.password !== currentPassword) {
+            conn.send({ type: 'auth_fail' });
+            setTimeout(() => conn.close(), 100);
+            return showToast('❌ Contraseña incorrecta', 'error');
+        }
+        conn.send({ type: 'auth_ok' });
+        receiverConnected = true;
+        setStatus('✅ Receptor conectado', 'ok');
+        showToast('🔗 Conectado', 'success');
+        if (filesReady) setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
+    }
 }
 
 function handleReceiverData(data) {
-if (data.type === 'auth_ok') {
-setStatus('✅ Conectado. Recibiendo...', 'ok');
-showToast('🔗 Conectado', 'success');
-document.getElementById('receiver-auth').classList.add('hidden');
-document.getElementById('progress-ui').style.display = 'block';
-document.getElementById('step-indicator').textContent = 'Recibiendo...';
-receiverTransferStartTime = 0;
-receiverBytesReceived = 0;
-receiverTotalSize = 0;
-receivedFiles = {};
-} else if (data.type === 'auth_fail') {
-showToast('❌ Contraseña incorrecta', 'error');
-conn.close();
-} else if (data.type === 'file_info') {
-handleFileInfo(data);
-} else if (data.type === 'chunk') {
-handleChunk(data);
-} else if (data.type === 'complete') {
-finalizeFile(data.fileName);
-}
+    if (data.type === 'auth_ok') {
+        setStatus('✅ Conectado. Recibiendo...', 'ok');
+        showToast('🔗 Conectado', 'success');
+        document.getElementById('receiver-auth').classList.add('hidden');
+        document.getElementById('progress-ui').style.display = 'block';
+        document.getElementById('step-indicator').textContent = 'Recibiendo...';
+        receiverTransferStartTime = 0;
+        receiverBytesReceived = 0;
+        receiverTotalSize = 0;
+        // Cerrar streams pendientes por si acaso
+        for (const key in receivedFiles) {
+            if (receivedFiles[key].writableStream) receivedFiles[key].writableStream.close();
+        }
+        receivedFiles = {};
+    } else if (data.type === 'auth_fail') {
+        showToast('❌ Contraseña incorrecta', 'error');
+        conn.close();
+    } else if (data.type === 'file_info') {
+        handleFileInfo(data);
+    } else if (data.type === 'chunk') {
+        handleChunk(data);
+    } else if (data.type === 'complete') {
+        finalizeFile(data.fileName);
+    }
 }
 
 function initPeer() {
-peer = new Peer(transferId, { debug: 0 });
-peer.on('open', () => { setStatus('🟢 Listo. Esperando...', 'ok'); showToast('✅ Listo', 'success'); });
-peer.on('connection', c => { conn = c; setupConnection(); });
-peer.on('error', err => {
-if (err.type === 'unavailable-id') { setStatus('🔒 ID en uso', 'err'); showToast('❌ ID ya existe', 'error'); }
-else { setStatus(`❌ Error: ${err.type}`, 'err'); }
-});
+    peer = new Peer(transferId, { debug: 0 });
+    peer.on('open', () => { setStatus('🟢 Listo. Esperando...', 'ok'); showToast('✅ Listo', 'success'); });
+    peer.on('connection', c => { conn = c; setupConnection(); });
+    peer.on('error', err => {
+        if (err.type === 'unavailable-id') { setStatus('🔒 ID en uso', 'err'); showToast('❌ ID ya existe', 'error'); }
+        else { setStatus(`❌ Error: ${err.type}`, 'err'); }
+    });
 }
 
 function connectToSender() {
-const targetId = document.getElementById('receiver-target-id').value.trim();
-const pwd = document.getElementById('receiver-password').value;
-if (!targetId || targetId.length < 6) return showToast('❌ ID inválido', 'error');
-currentPassword = pwd;
-const target = `p2p-${targetId}`;
-setStatus('🔄 Conectando...', 'wait');
-peer = new Peer({ debug: 0 });
-peer.on('open', () => { setStatus('🔄 Conectando...', 'wait'); conn = peer.connect(target); setupConnection(); });
-peer.on('error', err => {
-if (err.type === 'peer-unavailable') { setStatus('❌ Emisor no encontrado', 'err'); showToast('❌ Verifica el ID', 'error'); }
-else { setStatus(`❌ Error: ${err.type}`, 'err'); }
-});
+    const targetId = document.getElementById('receiver-target-id').value.trim();
+    const pwd = document.getElementById('receiver-password').value;
+    if (!targetId || targetId.length < 6) return showToast('❌ ID inválido', 'error');
+    currentPassword = pwd;
+    const target = `p2p-${targetId}`;
+    setStatus('🔄 Conectando...', 'wait');
+    peer = new Peer({ debug: 0 });
+    peer.on('open', () => { setStatus('🔄 Conectando...', 'wait'); conn = peer.connect(target); setupConnection(); });
+    peer.on('error', err => {
+        if (err.type === 'peer-unavailable') { setStatus('❌ Emisor no encontrado', 'err'); showToast('❌ Verifica el ID', 'error'); }
+        else { setStatus(`❌ Error: ${err.type}`, 'err'); }
+    });
 }
 
-// === TRANSFERENCIA ===
+// === TRANSFERENCIA (emisor) ===
 async function startTransfer() {
-if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
-if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
-if (!receiverConnected) return showToast('⏳ Esperando receptor...', 'info');
+    if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
+    if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
+    if (!receiverConnected) return showToast('⏳ Esperando receptor...', 'info');
 
-const filesToSend = [...files];
-const foldersToSend = [...selectedFolders];
-const individualFiles = filesToSend.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
-const totalSize = filesToSend.reduce((s, f) => s + f.size, 0);
+    const filesToSend = [...files];
+    const foldersToSend = [...selectedFolders];
+    const individualFiles = filesToSend.filter(f => !f.webkitRelativePath || !f.webkitRelativePath.includes('/'));
+    const totalSize = filesToSend.reduce((s, f) => s + f.size, 0);
 
-startTime = Date.now();
-bytesTransferred = 0;
-document.getElementById('btn-start').disabled = true;
-document.getElementById('btn-start').textContent = '⏳ Preparando...';
-setStatus('📤 Iniciando...', 'wait');
+    startTime = Date.now();
+    bytesTransferred = 0;
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-start').textContent = '⏳ Preparando...';
+    setStatus('📤 Iniciando...', 'wait');
 
-// Enviar carpetas comprimidas
-for (const folderName of foldersToSend) {
-setStatus(`🗜️ Comprimiendo ${folderName}...`, 'wait');
-const zip = new JSZip();
-const folderFiles = filesToSend.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
+    for (const folderName of foldersToSend) {
+        setStatus(`🗜️ Comprimiendo ${folderName}...`, 'wait');
+        const zip = new JSZip();
+        const folderFiles = filesToSend.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
+        for (const file of folderFiles) {
+            const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
+            const arrayBuffer = await file.arrayBuffer();
+            zip.file(relativePath, arrayBuffer);
+        }
+        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+        await sendFileAsZip(zipBlob, `${folderName}.zip`, zipBlob.size, totalSize);
+        removeSentFolder(folderName);
+        await new Promise(r => setTimeout(r, 300));
+    }
 
-for (const file of folderFiles) {
-const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
-const arrayBuffer = await file.arrayBuffer();
-zip.file(relativePath, arrayBuffer);
-}
+    for (let i = 0; i < individualFiles.length; i++) {
+        await sendFile(individualFiles[i], i + foldersToSend.length, totalSize);
+        removeSentFile(individualFiles[i]);
+        await new Promise(r => setTimeout(r, 200));
+    }
 
-const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-await sendFileAsZip(zipBlob, `${folderName}.zip`, zipBlob.size, totalSize);
-removeSentFolder(folderName);
-await new Promise(r => setTimeout(r, 300));
-}
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    setStatus(`🎉 Completado en ${duration}s`, 'ok');
+    showToast('🎉 Transferencia completa', 'success');
+    document.getElementById('btn-start').textContent = '✅ OK';
+    document.getElementById('btn-start').disabled = false;
 
-// Enviar archivos individuales
-for (let i = 0; i < individualFiles.length; i++) {
-await sendFile(individualFiles[i], i + foldersToSend.length, totalSize);
-removeSentFile(individualFiles[i]);
-await new Promise(r => setTimeout(r, 200));
-}
-
-const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-setStatus(`🎉 Completado en ${duration}s`, 'ok');
-showToast('🎉 Transferencia completa', 'success');
-document.getElementById('btn-start').textContent = '✅ OK';
-document.getElementById('btn-start').disabled = false;
-
-filesToSend.forEach(f => saveHistory({ type: 'send', fileName: f.webkitRelativePath || f.name, size: formatSize(f.size), time: new Date().toLocaleString(), duration: `${duration}s` }));
-playCompleteSound();
-await clearAllState();
+    filesToSend.forEach(f => saveHistory({ type: 'send', fileName: f.webkitRelativePath || f.name, size: formatSize(f.size), time: new Date().toLocaleString(), duration: `${duration}s` }));
+    playCompleteSound();
+    await clearAllState();
 }
 
 async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
-const fileId = `zip-${fileName}-${fileSize}-${Date.now()}`;
-const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
-logFile(`📤 🗜️ ${fileName} (${formatSize(fileSize)})`);
+    const fileId = `zip-${fileName}-${fileSize}-${Date.now()}`;
+    const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+    logFile(`📤 🗜️ ${fileName} (${formatSize(fileSize)})`);
 
-conn.send({
-type: 'file_info',
-fileName: fileName,
-fileSize: fileSize,
-totalChunks: totalChunks,
-fileId: fileId,
-totalFilesSize: totalSize,
-isZip: true
-});
+    conn.send({
+        type: 'file_info', fileName, fileSize, totalChunks, fileId,
+        totalFilesSize: totalSize, isZip: true
+    });
+    await new Promise(r => setTimeout(r, 100));
 
-await new Promise(r => setTimeout(r, 100));
-
-for (let c = 0; c < totalChunks; c++) {
-const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
-const buffer = await chunk.arrayBuffer();
-
-conn.send({
-type: 'chunk',
-fileId: fileId,
-index: c,
-data: buffer,
-total: totalChunks
-});
-
-bytesTransferred += buffer.byteLength;
-
-const overallProgress = (bytesTransferred / totalSize) * 100;
-const elapsed = (Date.now() - startTime) / 1000 || 1;
-const speed = bytesTransferred / elapsed;
-const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
-const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
-const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-
-updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
-
-if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
-else await new Promise(r => setTimeout(r, 50));
-}
-
-updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
-await new Promise(r => setTimeout(r, 200));
-conn.send({ type: 'complete', fileName: fileName });
-logFile(`✅ 🗜️ ${fileName} enviado`);
+    for (let c = 0; c < totalChunks; c++) {
+        const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
+        const buffer = await chunk.arrayBuffer();
+        conn.send({ type: 'chunk', fileId, index: c, data: buffer, total: totalChunks });
+        bytesTransferred += buffer.byteLength;
+        const overallProgress = (bytesTransferred / totalSize) * 100;
+        const elapsed = (Date.now() - startTime) / 1000 || 1;
+        const speed = bytesTransferred / elapsed;
+        const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
+        const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
+        const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+        updateProgress(overallProgress, fileName, speedStr, etaStr);
+        if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
+        else await new Promise(r => setTimeout(r, 50));
+    }
+    updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
+    await new Promise(r => setTimeout(r, 200));
+    conn.send({ type: 'complete', fileName });
+    logFile(`✅ 🗜️ ${fileName} enviado`);
 }
 
 async function sendFile(file, index, totalSize) {
-const fileName = file.webkitRelativePath || file.name;
-const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-logFile(`📤 ${fileName} (${formatSize(file.size)})`);
+    const fileName = file.webkitRelativePath || file.name;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    logFile(`📤 ${fileName} (${formatSize(file.size)})`);
+    const fileId = `${file.name}-${file.size}-${index}`;
+    conn.send({ type: 'file_info', fileName, fileSize: file.size, totalChunks, fileId, totalFilesSize: totalSize });
+    await new Promise(r => setTimeout(r, 100));
 
-conn.send({ type: 'file_info', fileName, fileSize: file.size, totalChunks, fileId: `${file.name}-${file.size}-${index}`, totalFilesSize: totalSize });
-await new Promise(r => setTimeout(r, 100));
-
-for (let c = 0; c < totalChunks; c++) {
-const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
-const buffer = await chunk.arrayBuffer();
-conn.send({ type: 'chunk', fileId: `${file.name}-${file.size}-${index}`, index: c, data: buffer, total: totalChunks });
-bytesTransferred += buffer.byteLength;
-
-const overallProgress = (bytesTransferred / totalSize) * 100;
-const elapsed = (Date.now() - startTime) / 1000 || 1;
-const speed = bytesTransferred / elapsed;
-const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
-const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
-const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-
-updateProgress(Math.min(100, overallProgress), fileName, speedStr, etaStr);
-
-if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
-else await new Promise(r => setTimeout(r, 50));
+    for (let c = 0; c < totalChunks; c++) {
+        const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
+        const buffer = await chunk.arrayBuffer();
+        conn.send({ type: 'chunk', fileId, index: c, data: buffer, total: totalChunks });
+        bytesTransferred += buffer.byteLength;
+        const overallProgress = (bytesTransferred / totalSize) * 100;
+        const elapsed = (Date.now() - startTime) / 1000 || 1;
+        const speed = bytesTransferred / elapsed;
+        const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
+        const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
+        const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+        updateProgress(overallProgress, fileName, speedStr, etaStr);
+        if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
+        else await new Promise(r => setTimeout(r, 50));
+    }
+    await new Promise(r => setTimeout(r, 200));
+    conn.send({ type: 'complete', fileName });
+    logFile(`✅ ${fileName} enviado`);
 }
 
-// FIX: Eliminar condición problemática - el progreso se actualiza al 100% al final del loop
-await new Promise(r => setTimeout(r, 200));
-conn.send({ type: 'complete', fileName });
-logFile(`✅ ${fileName} enviado`);
+// === RECEPTOR CON ESCRITURA PROGRESIVA (SIN LÍMITES) ===
+async function handleFileInfo(data) {
+    if (Object.keys(receivedFiles).length === 0) {
+        receiverTransferStartTime = Date.now();
+    }
+    // Pedir al usuario dónde guardar el archivo
+    let fileHandle = null;
+    let writableStream = null;
+    let useFallback = false;
+
+    if (supportsFileSystemAccess) {
+        try {
+            fileHandle = await window.showSaveFilePicker({
+                suggestedName: data.fileName,
+                types: [{
+                    description: 'Archivo',
+                    accept: { 'application/octet-stream': ['.' + data.fileName.split('.').pop()] }
+                }]
+            });
+            writableStream = await fileHandle.createWritable();
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                logFile(`❌ Usuario canceló la descarga de ${data.fileName}`);
+                // Enviar señal de cancelación al emisor? Podría implementarse, pero por ahora ignoramos.
+                return;
+            }
+            showToast('❌ Error al crear archivo, usando método en memoria', 'error');
+            useFallback = true;
+        }
+    } else {
+        useFallback = true;
+    }
+
+    if (useFallback) {
+        // Modo memoria (fallback)
+        receivedFiles[data.fileId] = {
+            name: data.fileName,
+            size: data.fileSize,
+            totalChunks: data.totalChunks,
+            chunks: new Array(data.totalChunks),
+            received: 0,
+            isZip: data.isZip,
+            fileId: data.fileId,
+            useFallback: true
+        };
+    } else {
+        // Modo stream progresivo
+        receivedFiles[data.fileId] = {
+            name: data.fileName,
+            size: data.fileSize,
+            totalChunks: data.totalChunks,
+            received: 0,
+            receivedBytes: 0,
+            isZip: data.isZip,
+            fileId: data.fileId,
+            writableStream: writableStream,
+            fileHandle: fileHandle,
+            useFallback: false
+        };
+    }
+
+    if (!receiverTotalSize) {
+        receiverTotalSize = data.totalFilesSize || data.fileSize;
+    }
+    logFile(`📥 ${data.fileName} (${formatSize(data.fileSize)})`);
+    updateReceiverProgress(data.fileName, 0);
 }
 
-// === RECEPTOR CON TEMPORIZADOR CORREGIDO ===
-function handleFileInfo(data) {
-// Si es el primer archivo de una nueva ronda, reiniciar el timer
-if (Object.keys(receivedFiles).length === 0) {
-receiverTransferStartTime = Date.now();
+async function handleChunk(data) {
+    const fd = receivedFiles[data.fileId];
+    if (!fd) return;
+
+    if (fd.useFallback) {
+        // Modo memoria
+        if (fd.chunks[data.index] !== undefined) return;
+        fd.chunks[data.index] = data.data;
+        fd.received++;
+        receiverBytesReceived += data.data.byteLength;
+        updateReceiverProgress(fd.name, (fd.received / fd.totalChunks) * 100);
+        if (fd.received === fd.totalChunks) {
+            logFile(`✓ ${fd.name}: Descargando...`);
+            downloadFileFallback(fd);
+        }
+    } else {
+        // Modo stream: escribir directamente
+        try {
+            await fd.writableStream.write(data.data);
+            fd.received++;
+            fd.receivedBytes += data.data.byteLength;
+            receiverBytesReceived += data.data.byteLength;
+            const percent = (fd.received / fd.totalChunks) * 100;
+            updateReceiverProgress(fd.name, percent);
+            if (fd.received === fd.totalChunks) {
+                await fd.writableStream.close();
+                logFile(`✅ ${fd.name} descargado (${formatSize(fd.size)})`);
+                delete receivedFiles[data.fileId];
+                if (Object.keys(receivedFiles).length === 0) {
+                    const duration = ((Date.now() - receiverTransferStartTime) / 1000).toFixed(1);
+                    setStatus(`🎉 Completado en ${duration}s`, 'ok');
+                    playCompleteSound();
+                    saveHistory({ type: 'receive', fileName: fd.name, size: formatSize(fd.size), time: new Date().toLocaleString(), duration: `${duration}s` });
+                    receiverTransferStartTime = 0;
+                    receiverTotalSize = 0;
+                    receiverBytesReceived = 0;
+                }
+            }
+        } catch (err) {
+            logFile(`❌ Error escribiendo chunk: ${err.message}`);
+            fd.writableStream.abort();
+            delete receivedFiles[data.fileId];
+        }
+    }
 }
 
-receivedFiles[data.fileId] = {
-name: data.fileName,
-size: data.fileSize,
-totalChunks: data.totalChunks,
-chunks: new Array(data.totalChunks),
-received: 0,
-isZip: data.isZip,
-fileId: data.fileId   // guardamos id para borrar después
-};
-
-if (!receiverTotalSize) {
-receiverTotalSize = data.totalFilesSize || data.fileSize;
-}
-
-logFile(`📥 ${data.fileName}`);
-updateReceiverProgress(data.fileName, 0);
-if (data.totalChunks === 0) downloadFile(receivedFiles[data.fileId]);
-}
-
-function handleChunk(data) {
-const fd = receivedFiles[data.fileId];
-if (!fd || fd.chunks[data.index] !== undefined) return;
-fd.chunks[data.index] = data.data;
-fd.received++;
-receiverBytesReceived += data.data.byteLength;
-updateReceiverProgress(fd.name, (fd.received / fd.totalChunks) * 100);
-if (fd.received === fd.totalChunks) {
-logFile(`✓ ${fd.name}: Descargando...`);
-downloadFile(fd);
-}
-}
-
-function downloadFile(fileData) {
-const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
-if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
-const blob = new Blob(validChunks);
-if (!blob.size) { logFile('❌ Blob vacío'); return; }
-
-const url = URL.createObjectURL(blob);
-const a = document.createElement('a');
-a.href = url;
-a.download = fileData.name;
-document.body.appendChild(a);
-a.click();
-document.body.removeChild(a);
-URL.revokeObjectURL(url);
-
-logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
-
-// Liberar memoria y eliminar entrada usando fileId
-delete receivedFiles[fileData.fileId];
-fileData.chunks = null;
-
-if (Object.keys(receivedFiles).length === 0) {
-const duration = ((Date.now() - receiverTransferStartTime) / 1000).toFixed(1);
-setStatus(`🎉 Completado en ${duration}s`, 'ok');
-playCompleteSound();
-saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
-// Resetear timer para futuras transferencias
-receiverTransferStartTime = 0;
-receiverTotalSize = 0;
-receiverBytesReceived = 0;
-}
+// Fallback para navegadores sin File System Access
+function downloadFileFallback(fileData) {
+    const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
+    if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
+    const blob = new Blob(validChunks);
+    if (!blob.size) { logFile('❌ Blob vacío'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileData.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
+    delete receivedFiles[fileData.fileId];
+    if (Object.keys(receivedFiles).length === 0) {
+        const duration = ((Date.now() - receiverTransferStartTime) / 1000).toFixed(1);
+        setStatus(`🎉 Completado en ${duration}s`, 'ok');
+        playCompleteSound();
+        saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
+        receiverTransferStartTime = 0;
+        receiverTotalSize = 0;
+        receiverBytesReceived = 0;
+    }
 }
 
 function finalizeFile(fileName) { /* no necesario */ }
 
 function updateReceiverProgress(fileName, percent) {
-const now = Date.now();
-const elapsed = (now - receiverTransferStartTime) / 1000 || 1;
-const speed = receiverBytesReceived / elapsed;
-const remaining = speed > 0 && receiverTotalSize > receiverBytesReceived ? (receiverTotalSize - receiverBytesReceived) / speed : 0;
-const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
-const etaStr = remaining > 86400 || remaining < 0 || elapsed < 1 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
-updateProgress(percent, fileName, speedStr, etaStr);
+    const elapsed = (Date.now() - receiverTransferStartTime) / 1000 || 1;
+    const speed = receiverBytesReceived / elapsed;
+    const remaining = (speed > 0 && receiverTotalSize > receiverBytesReceived) ? (receiverTotalSize - receiverBytesReceived) / speed : 0;
+    const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
+    const etaStr = (remaining > 86400 || remaining < 0 || elapsed < 1) ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
+    updateProgress(percent, fileName, speedStr, etaStr);
 }
 
 window.onload = async () => {
-loadTheme();
-renderHistory();
-const saved = localStorage.getItem(SESSION_KEY);
-if (saved) {
-const session = JSON.parse(saved);
-const age = (Date.now() - session.timestamp) / 1000 / 60 / 60;
-if (age < 1 && session.role === 'send' && !session.hadPwd) {
-document.getElementById('sender-id').value = session.id;
-setRole('send');
-setupSender();
-setStatus('🔄 Sesión restaurada', 'wait');
-} else {
-localStorage.removeItem(SESSION_KEY);
-await clearAllState();
-}
-}
+    loadTheme();
+    renderHistory();
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (saved) {
+        const session = JSON.parse(saved);
+        const age = (Date.now() - session.timestamp) / 1000 / 60 / 60;
+        if (age < 1 && session.role === 'send' && !session.hadPwd) {
+            document.getElementById('sender-id').value = session.id;
+            setRole('send');
+            setupSender();
+            setStatus('🔄 Sesión restaurada', 'wait');
+        } else {
+            localStorage.removeItem(SESSION_KEY);
+            await clearAllState();
+        }
+    }
 };
 </script>
 </body>
