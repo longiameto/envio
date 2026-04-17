@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.7 (Sin límites)</title>
+<title>Comparte Archivos P2P - v8.8 (Donaciones + Usuarios)</title>
 <!-- Librerías externas -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -31,8 +31,10 @@
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
 body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; transition: background 0.3s, color 0.3s; }
 .container { background: var(--card); padding: 1.5rem; border-radius: 16px; width: 100%; max-width: 540px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); transition: background 0.3s; }
-h1 { text-align: center; margin-bottom: 1.2rem; font-size: 1.5rem; }
 .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.title-section { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.title-section h1 { margin: 0; }
+.user-counter { background: var(--accent); padding: 4px 10px; border-radius: 40px; font-size: 0.75rem; font-weight: bold; display: inline-flex; align-items: center; gap: 5px; cursor: help; }
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; color: var(--text); font-size: 1.2rem; }
 .row { display: flex; gap: 10px; margin-bottom: 12px; }
 input, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.95rem; }
@@ -45,6 +47,7 @@ button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; 
 .btn-secondary { background: var(--border); color: var(--text); margin-top: 10px; }
 .btn-danger { background: var(--error); color: white; margin-top: 12px; }
 .btn-back { background: #6c757d; color: white; margin-top: 12px; }
+.btn-donate { background: linear-gradient(135deg, #f7971e, #ffd200); color: #1e293b; margin-top: 12px; font-weight: bold; border: none; }
 .info-box { background: var(--bg); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; word-break: break-all; margin: 10px 0; border: 1px dashed var(--border); text-align: center; }
 .qr-container { display: flex; justify-content: center; margin: 10px 0; background: white; padding: 10px; border-radius: 8px; width: fit-content; margin-inline: auto; }
 .status { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-size: 0.9rem; }
@@ -91,11 +94,41 @@ align-items: center;
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .button-group { display: flex; gap: 10px; margin-top: 12px; }
 .button-group button { margin-top: 0; }
+
+/* Modal de donaciones */
+.modal {
+display: none;
+position: fixed;
+top: 0; left: 0;
+width: 100%; height: 100%;
+background: rgba(0,0,0,0.7);
+z-index: 2000;
+justify-content: center;
+align-items: center;
+}
+.modal-content {
+background: var(--card);
+border-radius: 16px;
+padding: 20px;
+max-width: 320px;
+width: 90%;
+text-align: center;
+border: 1px solid var(--border);
+}
+.modal-content h3 { margin-bottom: 16px; color: var(--accent); }
+.donate-item { background: var(--bg); margin: 12px 0; padding: 12px; border-radius: 12px; text-align: left; }
+.donate-item strong { display: block; color: var(--accent); margin-bottom: 6px; }
+.donate-item code { display: block; word-break: break-all; font-family: monospace; font-size: 0.9rem; background: var(--card); padding: 6px; border-radius: 6px; margin-top: 4px; }
+.btn-copy { background: var(--accent); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; margin-top: 6px; cursor: pointer; }
+.close-modal { background: var(--error); color: white; margin-top: 16px; padding: 8px; border-radius: 8px; width: 100%; border: none; cursor: pointer; }
+
 @media (max-width: 480px) {
 .container { padding: 1rem; }
 .btn-role { padding: 12px; font-size: 1rem; }
 input, button { padding: 10px; font-size: 0.9rem; }
 .drop-zone { min-height: 140px; padding: 20px; }
+.title-section { gap: 8px; }
+.user-counter { font-size: 0.7rem; }
 }
 </style>
 </head>
@@ -103,7 +136,12 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <div class="toast-container" id="toast-container"></div>
 <div class="container">
 <div class="header-row">
+<div class="title-section">
 <h1>📡 Transferencia P2P</h1>
+<div class="user-counter" id="userCounter" title="Estimación de usuarios activos en tiempo real (simulado)">
+👥 <span id="userCount">--</span>
+</div>
+</div>
 <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
 </div>
 <div class="step-indicator" id="step-indicator">Paso 1: Selecciona tu rol</div>
@@ -169,11 +207,79 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <div id="status" class="status wait">⏳ Selecciona Emisor o Receptor</div>
 <div class="button-group">
 <button class="btn-back" onclick="goBackToRoleSelection()">◀ Volver</button>
+<button class="btn-donate" onclick="openDonateModal()">❤️ Donar</button>
 <button class="btn-danger" onclick="hardReset()">🗑️ Reiniciar</button>
 </div>
 </div>
 
+<!-- Modal de donaciones -->
+<div id="donateModal" class="modal">
+<div class="modal-content">
+<h3>❤️ Apoya el proyecto</h3>
+<div class="donate-item">
+<strong>💸 PayPal</strong>
+<code>longiameto@hotmail.com</code>
+<button class="btn-copy" onclick="copyToClipboard('longiameto@hotmail.com')">Copiar</button>
+</div>
+<div class="donate-item">
+<strong>🪙 Binance ID</strong>
+<code>63377372</code>
+<button class="btn-copy" onclick="copyToClipboard('63377372')">Copiar</button>
+</div>
+<div class="donate-item">
+<strong>🇧🇷 PIX</strong>
+<code>41996329162</code>
+<button class="btn-copy" onclick="copyToClipboard('41996329162')">Copiar</button>
+</div>
+<div class="donate-item">
+<strong>🇵🇪 Yape</strong>
+<code>935 307 316</code>
+<button class="btn-copy" onclick="copyToClipboard('935307316')">Copiar</button>
+</div>
+<button class="close-modal" onclick="closeDonateModal()">Cerrar</button>
+</div>
+</div>
+
 <script>
+// ==================== CONTADOR DE USUARIOS SIMULADO ====================
+let userCounterInterval;
+function startUserCounter() {
+    const userCountSpan = document.getElementById('userCount');
+    if (!userCountSpan) return;
+    // Función para generar número aleatorio entre 5 y 45 (simula usuarios activos)
+    function updateCounter() {
+        const randomUsers = Math.floor(Math.random() * 40) + 6; // 6 a 45
+        userCountSpan.textContent = randomUsers;
+    }
+    updateCounter();
+    userCounterInterval = setInterval(updateCounter, 10000); // cambia cada 10 segundos
+}
+// Detener el contador al salir (opcional)
+function stopUserCounter() {
+    if (userCounterInterval) clearInterval(userCounterInterval);
+}
+
+// ==================== DONACIONES ====================
+function openDonateModal() {
+    document.getElementById('donateModal').style.display = 'flex';
+}
+function closeDonateModal() {
+    document.getElementById('donateModal').style.display = 'none';
+}
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('✅ Copiado al portapapeles', 'success');
+    }).catch(() => {
+        showToast('❌ No se pudo copiar', 'error');
+    });
+}
+// Cerrar modal al hacer clic fuera del contenido
+window.onclick = function(event) {
+    const modal = document.getElementById('donateModal');
+    if (event.target === modal) closeDonateModal();
+};
+
+// ==================== RESTO DEL CÓDIGO (transferencia P2P) ====================
 const CHUNK_SIZE = 256 * 1024;
 const DB_NAME = 'P2PTransferDB';
 const SESSION_KEY = 'p2p_final';
@@ -187,12 +293,10 @@ let filesReady = false;
 let receiverBytesReceived = 0;
 let receiverTransferStartTime = 0;
 let receiverTotalSize = 0;
-let receivedFiles = {};  // Ahora cada entrada tendrá: { name, size, totalChunks, received, writableStream, fileHandle, receivedBytes }
+let receivedFiles = {};
 let isDarkMode = true;
 
-// Detectar soporte de File System Access API
 const supportsFileSystemAccess = 'showSaveFilePicker' in window;
-
 if (!supportsFileSystemAccess) {
     showToast('⚠️ Tu navegador no soporta guardado progresivo. Los archivos grandes pueden fallar.', 'error');
 }
@@ -295,7 +399,6 @@ function goBackToRoleSelection() {
         role = null; files = []; selectedFolders.clear();
         filesReady = false; receiverConnected = false; currentPassword = '';
         receiverBytesReceived = 0; receiverTransferStartTime = 0; receiverTotalSize = 0;
-        // Cerrar streams abiertos si los hay
         for (const key in receivedFiles) {
             if (receivedFiles[key].writableStream) receivedFiles[key].writableStream.close();
         }
@@ -407,7 +510,6 @@ function clearFileInputs() {
     if (folderInput) folderInput.value = '';
 }
 
-// === DRAG & DROP ===
 function setupDragDrop() {
     const dropZone = document.getElementById('drop-zone');
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -585,7 +687,6 @@ function handleReceiverData(data) {
         receiverTransferStartTime = 0;
         receiverBytesReceived = 0;
         receiverTotalSize = 0;
-        // Cerrar streams pendientes por si acaso
         for (const key in receivedFiles) {
             if (receivedFiles[key].writableStream) receivedFiles[key].writableStream.close();
         }
@@ -627,7 +728,6 @@ function connectToSender() {
     });
 }
 
-// === TRANSFERENCIA (emisor) ===
 async function startTransfer() {
     if (!files.length || !filesReady) return showToast('❌ Selecciona archivos', 'error');
     if (!conn || !conn.open) return showToast('❌ Sin conexión', 'error');
@@ -680,13 +780,8 @@ async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
     const fileId = `zip-${fileName}-${fileSize}-${Date.now()}`;
     const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
     logFile(`📤 🗜️ ${fileName} (${formatSize(fileSize)})`);
-
-    conn.send({
-        type: 'file_info', fileName, fileSize, totalChunks, fileId,
-        totalFilesSize: totalSize, isZip: true
-    });
+    conn.send({ type: 'file_info', fileName, fileSize, totalChunks, fileId, totalFilesSize: totalSize, isZip: true });
     await new Promise(r => setTimeout(r, 100));
-
     for (let c = 0; c < totalChunks; c++) {
         const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
         const buffer = await chunk.arrayBuffer();
@@ -715,7 +810,6 @@ async function sendFile(file, index, totalSize) {
     const fileId = `${file.name}-${file.size}-${index}`;
     conn.send({ type: 'file_info', fileName, fileSize: file.size, totalChunks, fileId, totalFilesSize: totalSize });
     await new Promise(r => setTimeout(r, 100));
-
     for (let c = 0; c < totalChunks; c++) {
         const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
         const buffer = await chunk.arrayBuffer();
@@ -736,70 +830,42 @@ async function sendFile(file, index, totalSize) {
     logFile(`✅ ${fileName} enviado`);
 }
 
-// === RECEPTOR CON ESCRITURA PROGRESIVA (SIN LÍMITES) ===
 async function handleFileInfo(data) {
-    if (Object.keys(receivedFiles).length === 0) {
-        receiverTransferStartTime = Date.now();
-    }
-    // Pedir al usuario dónde guardar el archivo
-    let fileHandle = null;
-    let writableStream = null;
-    let useFallback = false;
-
+    if (Object.keys(receivedFiles).length === 0) receiverTransferStartTime = Date.now();
+    let fileHandle = null, writableStream = null, useFallback = false;
     if (supportsFileSystemAccess) {
         try {
             fileHandle = await window.showSaveFilePicker({
                 suggestedName: data.fileName,
-                types: [{
-                    description: 'Archivo',
-                    accept: { 'application/octet-stream': ['.' + data.fileName.split('.').pop()] }
-                }]
+                types: [{ description: 'Archivo', accept: { 'application/octet-stream': ['.' + (data.fileName.split('.').pop() || 'bin')] } }]
             });
             writableStream = await fileHandle.createWritable();
         } catch (err) {
-            if (err.name === 'AbortError') {
+            if (err.name !== 'AbortError') {
+                showToast('❌ Error al crear archivo, usando método en memoria', 'error');
+                useFallback = true;
+            } else {
                 logFile(`❌ Usuario canceló la descarga de ${data.fileName}`);
-                // Enviar señal de cancelación al emisor? Podría implementarse, pero por ahora ignoramos.
                 return;
             }
-            showToast('❌ Error al crear archivo, usando método en memoria', 'error');
-            useFallback = true;
         }
     } else {
         useFallback = true;
     }
-
     if (useFallback) {
-        // Modo memoria (fallback)
         receivedFiles[data.fileId] = {
-            name: data.fileName,
-            size: data.fileSize,
-            totalChunks: data.totalChunks,
-            chunks: new Array(data.totalChunks),
-            received: 0,
-            isZip: data.isZip,
-            fileId: data.fileId,
-            useFallback: true
+            name: data.fileName, size: data.fileSize, totalChunks: data.totalChunks,
+            chunks: new Array(data.totalChunks), received: 0, isZip: data.isZip,
+            fileId: data.fileId, useFallback: true
         };
     } else {
-        // Modo stream progresivo
         receivedFiles[data.fileId] = {
-            name: data.fileName,
-            size: data.fileSize,
-            totalChunks: data.totalChunks,
-            received: 0,
-            receivedBytes: 0,
-            isZip: data.isZip,
-            fileId: data.fileId,
-            writableStream: writableStream,
-            fileHandle: fileHandle,
-            useFallback: false
+            name: data.fileName, size: data.fileSize, totalChunks: data.totalChunks,
+            received: 0, receivedBytes: 0, isZip: data.isZip, fileId: data.fileId,
+            writableStream, fileHandle, useFallback: false
         };
     }
-
-    if (!receiverTotalSize) {
-        receiverTotalSize = data.totalFilesSize || data.fileSize;
-    }
+    if (!receiverTotalSize) receiverTotalSize = data.totalFilesSize || data.fileSize;
     logFile(`📥 ${data.fileName} (${formatSize(data.fileSize)})`);
     updateReceiverProgress(data.fileName, 0);
 }
@@ -807,9 +873,7 @@ async function handleFileInfo(data) {
 async function handleChunk(data) {
     const fd = receivedFiles[data.fileId];
     if (!fd) return;
-
     if (fd.useFallback) {
-        // Modo memoria
         if (fd.chunks[data.index] !== undefined) return;
         fd.chunks[data.index] = data.data;
         fd.received++;
@@ -820,7 +884,6 @@ async function handleChunk(data) {
             downloadFileFallback(fd);
         }
     } else {
-        // Modo stream: escribir directamente
         try {
             await fd.writableStream.write(data.data);
             fd.received++;
@@ -837,9 +900,7 @@ async function handleChunk(data) {
                     setStatus(`🎉 Completado en ${duration}s`, 'ok');
                     playCompleteSound();
                     saveHistory({ type: 'receive', fileName: fd.name, size: formatSize(fd.size), time: new Date().toLocaleString(), duration: `${duration}s` });
-                    receiverTransferStartTime = 0;
-                    receiverTotalSize = 0;
-                    receiverBytesReceived = 0;
+                    receiverTransferStartTime = 0; receiverTotalSize = 0; receiverBytesReceived = 0;
                 }
             }
         } catch (err) {
@@ -850,7 +911,6 @@ async function handleChunk(data) {
     }
 }
 
-// Fallback para navegadores sin File System Access
 function downloadFileFallback(fileData) {
     const validChunks = fileData.chunks.filter(c => c !== undefined && c !== null);
     if (validChunks.length !== fileData.totalChunks) { logFile(`❌ Faltan chunks`); return; }
@@ -858,11 +918,8 @@ function downloadFileFallback(fileData) {
     if (!blob.size) { logFile('❌ Blob vacío'); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = fileData.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = fileData.name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
     delete receivedFiles[fileData.fileId];
@@ -871,13 +928,11 @@ function downloadFileFallback(fileData) {
         setStatus(`🎉 Completado en ${duration}s`, 'ok');
         playCompleteSound();
         saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
-        receiverTransferStartTime = 0;
-        receiverTotalSize = 0;
-        receiverBytesReceived = 0;
+        receiverTransferStartTime = 0; receiverTotalSize = 0; receiverBytesReceived = 0;
     }
 }
 
-function finalizeFile(fileName) { /* no necesario */ }
+function finalizeFile(fileName) { }
 
 function updateReceiverProgress(fileName, percent) {
     const elapsed = (Date.now() - receiverTransferStartTime) / 1000 || 1;
@@ -891,6 +946,7 @@ function updateReceiverProgress(fileName, percent) {
 window.onload = async () => {
     loadTheme();
     renderHistory();
+    startUserCounter(); // Iniciar contador simulado
     const saved = localStorage.getItem(SESSION_KEY);
     if (saved) {
         const session = JSON.parse(saved);
