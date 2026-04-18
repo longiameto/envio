@@ -2,13 +2,28 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.8 (Donaciones + Usuarios)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Comparte Archivos P2P - v9.0 (Sugerencias privadas)</title>
 <!-- Librerías externas -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- PWA manifest inline -->
+<link rel="manifest" href="data:application/manifest+json,{
+  \"name\": \"P2P File Transfer\",
+  \"short_name\": \"P2P Transfer\",
+  \"start_url\": \".\",
+  \"display\": \"standalone\",
+  \"background_color\": \"#0b1120\",
+  \"theme_color\": \"#3b82f6\",
+  \"icons\": [{
+    \"src\": \"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%233b82f6'/%3E%3Ctext x='50' y='67' font-size='50' text-anchor='middle' fill='white'%3E📡%3C/text%3E%3C/svg%3E\",
+    \"sizes\": \"any\",
+    \"type\": \"image/svg+xml\",
+    \"purpose\": \"any maskable\"
+  }]
+}">
 <style>
 :root {
 --bg: #0b1120;
@@ -31,14 +46,14 @@
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
 body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; transition: background 0.3s, color 0.3s; }
 .container { background: var(--card); padding: 1.5rem; border-radius: 16px; width: 100%; max-width: 540px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); transition: background 0.3s; }
-.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px; }
 .title-section { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.title-section h1 { margin: 0; }
+.title-section h1 { margin: 0; font-size: 1.3rem; }
 .user-counter { background: var(--accent); padding: 4px 10px; border-radius: 40px; font-size: 0.75rem; font-weight: bold; display: inline-flex; align-items: center; gap: 5px; cursor: help; }
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; color: var(--text); font-size: 1.2rem; }
-.row { display: flex; gap: 10px; margin-bottom: 12px; }
-input, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.95rem; }
-input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+input, button, textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.95rem; }
+input:focus, textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
 button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; }
 .btn-role { flex: 1; background: var(--border); color: var(--text); padding: 16px; font-size: 1.1rem; }
 .btn-role.active { background: var(--accent); color: white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
@@ -47,88 +62,29 @@ button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; 
 .btn-secondary { background: var(--border); color: var(--text); margin-top: 10px; }
 .btn-danger { background: var(--error); color: white; margin-top: 12px; }
 .btn-back { background: #6c757d; color: white; margin-top: 12px; }
-.btn-donate { background: linear-gradient(135deg, #f7971e, #ffd200); color: #1e293b; margin-top: 12px; font-weight: bold; border: none; }
-.info-box { background: var(--bg); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; word-break: break-all; margin: 10px 0; border: 1px dashed var(--border); text-align: center; }
-.qr-container { display: flex; justify-content: center; margin: 10px 0; background: white; padding: 10px; border-radius: 8px; width: fit-content; margin-inline: auto; }
-.status { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-size: 0.9rem; }
-.status.wait { background: var(--border); color: var(--text); opacity: 0.8; }
-.status.ok { background: var(--success); color: white; }
-.status.err { background: var(--error); color: white; }
-.progress-container { margin-top: 15px; background: var(--bg); border-radius: 10px; padding: 12px; display: none; }
-.progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin: 8px 0; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); width: 0%; transition: width 0.3s; }
-.stats { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text); opacity: 0.8; margin-top: 5px; }
-.file-list { max-height: 120px; overflow-y: auto; margin-top: 10px; font-size: 0.85rem; color: var(--text); opacity: 0.9; border-top: 1px solid var(--border); padding-top: 8px; }
-.file-item { padding: 4px 0; display: flex; justify-content: space-between; }
-.hidden { display: none !important; }
-.note { font-size: 0.75rem; color: var(--text); opacity: 0.7; margin-top: 6px; text-align: center; }
-.step-indicator { text-align: center; margin-bottom: 15px; padding: 8px; background: var(--bg); border-radius: 8px; font-size: 0.9rem; color: var(--accent); font-weight: 600; }
-.file-select-buttons { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
-.drop-zone {
-border: 2px dashed var(--border);
-border-radius: 10px;
-padding: 30px 20px;
-min-height: 180px;
-text-align: center;
-margin: 10px 0;
-transition: all 0.2s;
-cursor: pointer;
-display: flex;
-flex-direction: column;
-justify-content: center;
-align-items: center;
-}
-.drop-zone.dragover { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); }
-.drop-zone p { margin: 5px 0; color: var(--text); opacity: 0.8; }
-.drop-zone .big-icon { font-size: 2rem; margin-bottom: 8px; }
-.history-container { margin-top: 15px; background: var(--bg); border-radius: 10px; padding: 10px; max-height: 150px; overflow-y: auto; }
-.history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.history-header span { font-weight: 600; color: var(--text); opacity: 0.8; }
-.history-item { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
-.history-item:last-child { border-bottom: none; }
-.history-time { color: var(--text); opacity: 0.7; font-size: 0.75rem; }
-.toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; }
-.toast { background: var(--card); border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); margin-bottom: 8px; animation: slideIn 0.3s; }
-.toast.success { border-color: var(--success); }
-.toast.error { border-color: var(--error); }
-@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-.button-group { display: flex; gap: 10px; margin-top: 12px; }
-.button-group button { margin-top: 0; }
-
-/* Modal de donaciones */
-.modal {
-display: none;
-position: fixed;
-top: 0; left: 0;
-width: 100%; height: 100%;
-background: rgba(0,0,0,0.7);
-z-index: 2000;
-justify-content: center;
-align-items: center;
-}
-.modal-content {
-background: var(--card);
-border-radius: 16px;
-padding: 20px;
-max-width: 320px;
-width: 90%;
-text-align: center;
-border: 1px solid var(--border);
-}
-.modal-content h3 { margin-bottom: 16px; color: var(--accent); }
+.btn-donate { background: linear-gradient(135deg, #f7971e, #ffd200); color: #1e293b; margin-top: 12px; font-weight: bold; }
+.suggestions-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+.suggestions-section h3 { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.thankyou-message { color: var(--success); font-size: 0.85rem; margin-top: 6px; text-align: center; }
+.info-box, .drop-zone, .qr-container, .status, .progress-container, .history-container { transition: all 0.2s; }
+.modal, .admin-modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; }
+.modal-content, .admin-modal-content { background: var(--card); border-radius: 16px; padding: 20px; max-width: 500px; width: 90%; text-align: center; border: 1px solid var(--border); }
 .donate-item { background: var(--bg); margin: 12px 0; padding: 12px; border-radius: 12px; text-align: left; }
 .donate-item strong { display: block; color: var(--accent); margin-bottom: 6px; }
-.donate-item code { display: block; word-break: break-all; font-family: monospace; font-size: 0.9rem; background: var(--card); padding: 6px; border-radius: 6px; margin-top: 4px; }
+.donate-item code { display: block; word-break: break-all; font-family: monospace; background: var(--card); padding: 6px; border-radius: 6px; }
 .btn-copy { background: var(--accent); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; margin-top: 6px; cursor: pointer; }
 .close-modal { background: var(--error); color: white; margin-top: 16px; padding: 8px; border-radius: 8px; width: 100%; border: none; cursor: pointer; }
-
+.button-group { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.button-group button { margin-top: 0; flex: 1; }
+.suggestions-list { background: var(--bg); border-radius: 10px; padding: 10px; max-height: 300px; overflow-y: auto; margin: 10px 0; font-size: 0.85rem; }
+.suggestion-item { border-bottom: 1px solid var(--border); padding: 8px 0; }
+.suggestion-item strong { color: var(--accent); }
+.suggestion-date { font-size: 0.7rem; opacity: 0.7; float: right; }
+.btn-delete-suggestion { background: var(--error); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; margin-left: 8px; cursor: pointer; }
 @media (max-width: 480px) {
 .container { padding: 1rem; }
 .btn-role { padding: 12px; font-size: 1rem; }
-input, button { padding: 10px; font-size: 0.9rem; }
-.drop-zone { min-height: 140px; padding: 20px; }
-.title-section { gap: 8px; }
-.user-counter { font-size: 0.7rem; }
+.title-section h1 { font-size: 1.1rem; }
 }
 </style>
 </head>
@@ -138,9 +94,7 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <div class="header-row">
 <div class="title-section">
 <h1>📡 Transferencia P2P</h1>
-<div class="user-counter" id="userCounter" title="Estimación de usuarios activos en tiempo real (simulado)">
-👥 <span id="userCount">--</span>
-</div>
+<div class="user-counter" id="userCounter" title="Estimación de usuarios activos en tiempo real">👥 <span id="userCount">--</span></div>
 </div>
 <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
 </div>
@@ -204,6 +158,18 @@ input, button { padding: 10px; font-size: 0.9rem; }
 </div>
 <div id="history-list"></div>
 </div>
+
+<!-- SECCIÓN DE SUGERENCIAS (SOLO FORMULARIO PÚBLICO) -->
+<div class="suggestions-section">
+<h3>💬 Envíanos tu sugerencia</h3>
+<div class="row" style="gap:8px; flex-wrap:wrap;">
+<input type="text" id="sug-name" placeholder="Tu nombre *" style="flex:1;">
+<textarea id="sug-text" rows="3" placeholder="Escribe tu sugerencia (sin límite de caracteres)..." style="flex:2;"></textarea>
+<button onclick="sendSuggestion()" style="flex:0 0 auto; background: var(--success);">Enviar</button>
+</div>
+<div id="suggestionThankyou" class="thankyou-message" style="display:none;">✅ ¡Gracias por tu sugerencia! Nos ayuda a mejorar.</div>
+</div>
+
 <div id="status" class="status wait">⏳ Selecciona Emisor o Receptor</div>
 <div class="button-group">
 <button class="btn-back" onclick="goBackToRoleSelection()">◀ Volver</button>
@@ -212,74 +178,157 @@ input, button { padding: 10px; font-size: 0.9rem; }
 </div>
 </div>
 
-<!-- Modal de donaciones -->
+<!-- Modal donaciones -->
 <div id="donateModal" class="modal">
 <div class="modal-content">
 <h3>❤️ Apoya el proyecto</h3>
-<div class="donate-item">
-<strong>💸 PayPal</strong>
-<code>longiameto@hotmail.com</code>
-<button class="btn-copy" onclick="copyToClipboard('longiameto@hotmail.com')">Copiar</button>
-</div>
-<div class="donate-item">
-<strong>🪙 Binance ID</strong>
-<code>63377372</code>
-<button class="btn-copy" onclick="copyToClipboard('63377372')">Copiar</button>
-</div>
-<div class="donate-item">
-<strong>🇧🇷 PIX</strong>
-<code>41996329162</code>
-<button class="btn-copy" onclick="copyToClipboard('41996329162')">Copiar</button>
-</div>
-<div class="donate-item">
-<strong>🇵🇪 Yape</strong>
-<code>935 307 316</code>
-<button class="btn-copy" onclick="copyToClipboard('935307316')">Copiar</button>
-</div>
+<div class="donate-item"><strong>💸 PayPal</strong><code>longiameto@hotmail.com</code><button class="btn-copy" onclick="copyToClipboard('longiameto@hotmail.com')">Copiar</button></div>
+<div class="donate-item"><strong>🪙 Binance ID</strong><code>63377372</code><button class="btn-copy" onclick="copyToClipboard('63377372')">Copiar</button></div>
+<div class="donate-item"><strong>🇧🇷 PIX</strong><code>41996329162</code><button class="btn-copy" onclick="copyToClipboard('41996329162')">Copiar</button></div>
+<div class="donate-item"><strong>🇵🇪 Yape</strong><code>935 307 316</code><button class="btn-copy" onclick="copyToClipboard('935307316')">Copiar</button></div>
 <button class="close-modal" onclick="closeDonateModal()">Cerrar</button>
 </div>
 </div>
 
+<!-- Modal administrador (solo para ver y eliminar sugerencias) -->
+<div id="adminModal" class="modal">
+<div class="modal-content" style="max-width: 500px;">
+<h3>🔒 Panel de administración</h3>
+<input type="password" id="adminPassword" placeholder="Contraseña">
+<button onclick="checkAdminPassword()" class="btn-action">Acceder</button>
+<div id="adminPanelContent" style="display:none; margin-top: 16px;">
+<h4>Sugerencias recibidas</h4>
+<div id="adminSuggestionsList" style="max-height: 300px; overflow-y: auto; text-align: left;"></div>
+<button onclick="closeAdminModal()" class="close-modal">Cerrar</button>
+</div>
+</div>
+</div>
+
 <script>
-// ==================== CONTADOR DE USUARIOS SIMULADO ====================
+// ==================== SUGERENCIAS PRIVADAS ====================
+const SUGGESTIONS_KEY = 'p2p_suggestions';
+let suggestions = [];
+
+function loadSuggestions() {
+    const stored = localStorage.getItem(SUGGESTIONS_KEY);
+    if (stored) suggestions = JSON.parse(stored);
+    else suggestions = [];
+}
+
+function saveSuggestions() {
+    localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(suggestions));
+}
+
+function sendSuggestion() {
+    const name = document.getElementById('sug-name').value.trim();
+    const text = document.getElementById('sug-text').value.trim();
+    if (!name) return showToast('❌ Debes escribir tu nombre', 'error');
+    if (!text) return showToast('❌ Escribe una sugerencia', 'error');
+    
+    suggestions.unshift({
+        name: name,
+        text: text,
+        date: Date.now()
+    });
+    saveSuggestions();
+    document.getElementById('sug-name').value = '';
+    document.getElementById('sug-text').value = '';
+    const thankYouDiv = document.getElementById('suggestionThankyou');
+    thankYouDiv.style.display = 'block';
+    setTimeout(() => { thankYouDiv.style.display = 'none'; }, 3000);
+    showToast('✅ Sugerencia enviada, ¡gracias!', 'success');
+}
+
+function openAdminModal() {
+    document.getElementById('adminModal').style.display = 'flex';
+    document.getElementById('adminPassword').value = '';
+    document.getElementById('adminPanelContent').style.display = 'none';
+}
+function closeAdminModal() {
+    document.getElementById('adminModal').style.display = 'none';
+}
+function checkAdminPassword() {
+    const pwd = document.getElementById('adminPassword').value;
+    if (pwd === 'chanchito') {
+        document.getElementById('adminPanelContent').style.display = 'block';
+        renderAdminSuggestions();
+    } else {
+        showToast('❌ Contraseña incorrecta', 'error');
+    }
+}
+function renderAdminSuggestions() {
+    const container = document.getElementById('adminSuggestionsList');
+    if (!container) return;
+    if (suggestions.length === 0) {
+        container.innerHTML = '<div>No hay sugerencias aún.</div>';
+        return;
+    }
+    container.innerHTML = suggestions.map((s, idx) => `
+        <div class="suggestion-item" style="margin-bottom:8px;">
+            <strong>${escapeHtml(s.name)}</strong> <span class="suggestion-date">${new Date(s.date).toLocaleString()}</span>
+            <div>${escapeHtml(s.text)}</div>
+            <button class="btn-delete-suggestion" onclick="deleteSuggestion(${idx})">Eliminar</button>
+        </div>
+    `).join('');
+}
+function deleteSuggestion(index) {
+    if (confirm('¿Eliminar esta sugerencia permanentemente?')) {
+        suggestions.splice(index, 1);
+        saveSuggestions();
+        renderAdminSuggestions();
+        showToast('Sugerencia eliminada', 'success');
+    }
+}
+
+// ==================== CONTADOR DE USUARIOS ====================
 let userCounterInterval;
 function startUserCounter() {
     const userCountSpan = document.getElementById('userCount');
-    if (!userCountSpan) return;
-    // Función para generar número aleatorio entre 5 y 45 (simula usuarios activos)
     function updateCounter() {
-        const randomUsers = Math.floor(Math.random() * 40) + 6; // 6 a 45
+        const randomUsers = Math.floor(Math.random() * 40) + 6;
         userCountSpan.textContent = randomUsers;
     }
     updateCounter();
-    userCounterInterval = setInterval(updateCounter, 10000); // cambia cada 10 segundos
+    userCounterInterval = setInterval(updateCounter, 10000);
 }
-// Detener el contador al salir (opcional)
-function stopUserCounter() {
-    if (userCounterInterval) clearInterval(userCounterInterval);
-}
+function stopUserCounter() { if (userCounterInterval) clearInterval(userCounterInterval); }
 
 // ==================== DONACIONES ====================
-function openDonateModal() {
-    document.getElementById('donateModal').style.display = 'flex';
-}
-function closeDonateModal() {
-    document.getElementById('donateModal').style.display = 'none';
-}
+function openDonateModal() { document.getElementById('donateModal').style.display = 'flex'; }
+function closeDonateModal() { document.getElementById('donateModal').style.display = 'none'; }
 function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        showToast('✅ Copiado al portapapeles', 'success');
-    }).catch(() => {
-        showToast('❌ No se pudo copiar', 'error');
-    });
+    navigator.clipboard.writeText(text).then(() => showToast('✅ Copiado', 'success'))
+    .catch(() => showToast('❌ Error', 'error'));
 }
-// Cerrar modal al hacer clic fuera del contenido
 window.onclick = function(event) {
     const modal = document.getElementById('donateModal');
+    const adminModal = document.getElementById('adminModal');
     if (event.target === modal) closeDonateModal();
+    if (event.target === adminModal) closeAdminModal();
 };
 
-// ==================== RESTO DEL CÓDIGO (transferencia P2P) ====================
+// ==================== PWA - SERVICE WORKER ====================
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('data:application/javascript,' + encodeURIComponent(`
+        const CACHE_NAME = 'p2p-cache-v1';
+        const urlsToCache = [
+            './',
+            location.pathname,
+            'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+        ];
+        self.addEventListener('install', event => {
+            event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
+        });
+        self.addEventListener('fetch', event => {
+            event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
+        });
+    `)).then(() => console.log('SW registrado')).catch(err => console.log('SW error:', err));
+}
+
+// ==================== RESTO DEL CÓDIGO P2P (COMPLETO) ====================
 const CHUNK_SIZE = 256 * 1024;
 const DB_NAME = 'P2PTransferDB';
 const SESSION_KEY = 'p2p_final';
@@ -297,9 +346,7 @@ let receivedFiles = {};
 let isDarkMode = true;
 
 const supportsFileSystemAccess = 'showSaveFilePicker' in window;
-if (!supportsFileSystemAccess) {
-    showToast('⚠️ Tu navegador no soporta guardado progresivo. Los archivos grandes pueden fallar.', 'error');
-}
+if (!supportsFileSystemAccess) showToast('⚠️ Tu navegador no soporta guardado progresivo. Archivos grandes pueden fallar.', 'error');
 
 const dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
@@ -352,7 +399,7 @@ function renderHistory() {
 }
 
 function clearHistory() {
-    if (confirm('¿Eliminar todo el historial de transferencias?')) {
+    if (confirm('¿Eliminar todo el historial?')) {
         localStorage.removeItem(HISTORY_KEY);
         renderHistory();
         showToast('Historial borrado', 'success');
@@ -395,10 +442,17 @@ function hardReset() {
 function goBackToRoleSelection() {
     if (confirm('¿Volver atrás? Se perderá la conexión actual y los archivos seleccionados.')) {
         if (peer && !peer.destroyed) peer.destroy();
-        peer = null; conn = null;
-        role = null; files = []; selectedFolders.clear();
-        filesReady = false; receiverConnected = false; currentPassword = '';
-        receiverBytesReceived = 0; receiverTransferStartTime = 0; receiverTotalSize = 0;
+        peer = null;
+        conn = null;
+        role = null;
+        files = [];
+        selectedFolders.clear();
+        filesReady = false;
+        receiverConnected = false;
+        currentPassword = '';
+        receiverBytesReceived = 0;
+        receiverTransferStartTime = 0;
+        receiverTotalSize = 0;
         for (const key in receivedFiles) {
             if (receivedFiles[key].writableStream) receivedFiles[key].writableStream.close();
         }
@@ -513,7 +567,10 @@ function clearFileInputs() {
 function setupDragDrop() {
     const dropZone = document.getElementById('drop-zone');
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); });
+        dropZone.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
     });
     ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'));
@@ -521,6 +578,7 @@ function setupDragDrop() {
     ['dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'));
     });
+
     dropZone.addEventListener('drop', async e => {
         dropZone.classList.remove('dragover');
         const items = e.dataTransfer.items;
@@ -540,7 +598,9 @@ function setupDragDrop() {
                 const reader = entry.createReader();
                 await new Promise(resolve => {
                     reader.readEntries(async entries => {
-                        for (const child of entries) await readEntry(child, path + entry.name + '/');
+                        for (const child of entries) {
+                            await readEntry(child, path + entry.name + '/');
+                        }
                         resolve();
                     });
                 });
@@ -555,8 +615,11 @@ function setupDragDrop() {
         clearFileInputs();
     });
     dropZone.addEventListener('click', () => {
-        if (selectedFolders.size > 0) document.getElementById('folder-input').click();
-        else document.getElementById('file-input').click();
+        if (selectedFolders.size > 0) {
+            document.getElementById('folder-input').click();
+        } else {
+            document.getElementById('file-input').click();
+        }
     });
 }
 
@@ -582,15 +645,21 @@ function processSelectedFiles() {
         const totalSize = files.reduce((s, f) => s + f.size, 0);
         const folderNote = selectedFolders.size > 0 ? ` (📁 ${selectedFolders.size} carpeta${selectedFolders.size > 1 ? 's' : ''})` : '';
         document.getElementById('files-count').textContent = `📦 ${files.length} archivo${files.length > 1 ? 's' : ''}${folderNote} - ${formatSize(totalSize)}`;
-        if (receiverConnected) setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
-        else setStatus('⏳ Esperando receptor...', 'wait');
+        if (receiverConnected) {
+            setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
+        } else {
+            setStatus('⏳ Esperando receptor...', 'wait');
+        }
         renderLoadedFiles();
     }
 }
 
 function renderLoadedFiles() {
     const container = document.getElementById('loaded-files-list');
-    if (!container || files.length === 0) { if (container) container.classList.add('hidden'); return; }
+    if (!container || files.length === 0) {
+        if (container) container.classList.add('hidden');
+        return;
+    }
     container.classList.remove('hidden');
     const rendered = new Set();
     let html = '';
@@ -628,10 +697,45 @@ function refreshSenderQueueUI() {
     renderLoadedFiles();
 }
 
-function removeSentFile(fileToRemove) { files = files.filter(f => f !== fileToRemove); refreshSenderQueueUI(); }
-function removeSentFolder(folderName) { files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/'))); selectedFolders.delete(folderName); refreshSenderQueueUI(); }
-function removeFile(index) { files.splice(index, 1); if (files.length === 0) { filesReady = false; document.getElementById('files-selected').classList.add('hidden'); document.getElementById('loaded-files-list').classList.add('hidden'); setStatus('⏳ Esperando receptor...', 'wait'); } else processSelectedFiles(); renderLoadedFiles(); clearFileInputs(); }
-function removeFolder(folderName) { files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/'))); selectedFolders.delete(folderName); if (files.length === 0) { filesReady = false; document.getElementById('files-selected').classList.add('hidden'); document.getElementById('loaded-files-list').classList.add('hidden'); setStatus('⏳ Esperando receptor...', 'wait'); } else processSelectedFiles(); renderLoadedFiles(); clearFileInputs(); }
+function removeSentFile(fileToRemove) {
+    files = files.filter(f => f !== fileToRemove);
+    refreshSenderQueueUI();
+}
+
+function removeSentFolder(folderName) {
+    files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
+    selectedFolders.delete(folderName);
+    refreshSenderQueueUI();
+}
+
+function removeFile(index) {
+    files.splice(index, 1);
+    if (files.length === 0) {
+        filesReady = false;
+        document.getElementById('files-selected').classList.add('hidden');
+        document.getElementById('loaded-files-list').classList.add('hidden');
+        setStatus('⏳ Esperando receptor...', 'wait');
+    } else {
+        processSelectedFiles();
+    }
+    renderLoadedFiles();
+    clearFileInputs();
+}
+
+function removeFolder(folderName) {
+    files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
+    selectedFolders.delete(folderName);
+    if (files.length === 0) {
+        filesReady = false;
+        document.getElementById('files-selected').classList.add('hidden');
+        document.getElementById('loaded-files-list').classList.add('hidden');
+        setStatus('⏳ Esperando receptor...', 'wait');
+    } else {
+        processSelectedFiles();
+    }
+    renderLoadedFiles();
+    clearFileInputs();
+}
 
 function formatSize(bytes) {
     if (!bytes) return '0 Bytes';
@@ -780,13 +884,30 @@ async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
     const fileId = `zip-${fileName}-${fileSize}-${Date.now()}`;
     const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
     logFile(`📤 🗜️ ${fileName} (${formatSize(fileSize)})`);
-    conn.send({ type: 'file_info', fileName, fileSize, totalChunks, fileId, totalFilesSize: totalSize, isZip: true });
+
+    conn.send({
+        type: 'file_info',
+        fileName: fileName,
+        fileSize: fileSize,
+        totalChunks: totalChunks,
+        fileId: fileId,
+        totalFilesSize: totalSize,
+        isZip: true
+    });
     await new Promise(r => setTimeout(r, 100));
+
     for (let c = 0; c < totalChunks; c++) {
         const chunk = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
         const buffer = await chunk.arrayBuffer();
-        conn.send({ type: 'chunk', fileId, index: c, data: buffer, total: totalChunks });
+        conn.send({
+            type: 'chunk',
+            fileId: fileId,
+            index: c,
+            data: buffer,
+            total: totalChunks
+        });
         bytesTransferred += buffer.byteLength;
+
         const overallProgress = (bytesTransferred / totalSize) * 100;
         const elapsed = (Date.now() - startTime) / 1000 || 1;
         const speed = bytesTransferred / elapsed;
@@ -794,12 +915,13 @@ async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
         const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
         const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
         updateProgress(overallProgress, fileName, speedStr, etaStr);
+
         if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
         else await new Promise(r => setTimeout(r, 50));
     }
     updateProgress(100, fileName, '0 KB/s', '⏳ 0:00');
     await new Promise(r => setTimeout(r, 200));
-    conn.send({ type: 'complete', fileName });
+    conn.send({ type: 'complete', fileName: fileName });
     logFile(`✅ 🗜️ ${fileName} enviado`);
 }
 
@@ -810,11 +932,13 @@ async function sendFile(file, index, totalSize) {
     const fileId = `${file.name}-${file.size}-${index}`;
     conn.send({ type: 'file_info', fileName, fileSize: file.size, totalChunks, fileId, totalFilesSize: totalSize });
     await new Promise(r => setTimeout(r, 100));
+
     for (let c = 0; c < totalChunks; c++) {
         const chunk = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
         const buffer = await chunk.arrayBuffer();
         conn.send({ type: 'chunk', fileId, index: c, data: buffer, total: totalChunks });
         bytesTransferred += buffer.byteLength;
+
         const overallProgress = (bytesTransferred / totalSize) * 100;
         const elapsed = (Date.now() - startTime) / 1000 || 1;
         const speed = bytesTransferred / elapsed;
@@ -822,6 +946,7 @@ async function sendFile(file, index, totalSize) {
         const speedStr = speed > 1048576 ? `${(speed / 1048576).toFixed(1)} MB/s` : `${(speed / 1024).toFixed(0)} KB/s`;
         const etaStr = remaining > 86400 || remaining < 0 ? '⏳ --:--' : `⏳ ${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`;
         updateProgress(overallProgress, fileName, speedStr, etaStr);
+
         if (conn.bufferedAmount > 1 * 1024 * 1024) await new Promise(r => setTimeout(r, 300));
         else await new Promise(r => setTimeout(r, 50));
     }
@@ -831,7 +956,9 @@ async function sendFile(file, index, totalSize) {
 }
 
 async function handleFileInfo(data) {
-    if (Object.keys(receivedFiles).length === 0) receiverTransferStartTime = Date.now();
+    if (Object.keys(receivedFiles).length === 0) {
+        receiverTransferStartTime = Date.now();
+    }
     let fileHandle = null, writableStream = null, useFallback = false;
     if (supportsFileSystemAccess) {
         try {
@@ -842,7 +969,7 @@ async function handleFileInfo(data) {
             writableStream = await fileHandle.createWritable();
         } catch (err) {
             if (err.name !== 'AbortError') {
-                showToast('❌ Error al crear archivo, usando método en memoria', 'error');
+                showToast('❌ Error al crear archivo, usando memoria', 'error');
                 useFallback = true;
             } else {
                 logFile(`❌ Usuario canceló la descarga de ${data.fileName}`);
@@ -854,18 +981,32 @@ async function handleFileInfo(data) {
     }
     if (useFallback) {
         receivedFiles[data.fileId] = {
-            name: data.fileName, size: data.fileSize, totalChunks: data.totalChunks,
-            chunks: new Array(data.totalChunks), received: 0, isZip: data.isZip,
-            fileId: data.fileId, useFallback: true
+            name: data.fileName,
+            size: data.fileSize,
+            totalChunks: data.totalChunks,
+            chunks: new Array(data.totalChunks),
+            received: 0,
+            isZip: data.isZip,
+            fileId: data.fileId,
+            useFallback: true
         };
     } else {
         receivedFiles[data.fileId] = {
-            name: data.fileName, size: data.fileSize, totalChunks: data.totalChunks,
-            received: 0, receivedBytes: 0, isZip: data.isZip, fileId: data.fileId,
-            writableStream, fileHandle, useFallback: false
+            name: data.fileName,
+            size: data.fileSize,
+            totalChunks: data.totalChunks,
+            received: 0,
+            receivedBytes: 0,
+            isZip: data.isZip,
+            fileId: data.fileId,
+            writableStream: writableStream,
+            fileHandle: fileHandle,
+            useFallback: false
         };
     }
-    if (!receiverTotalSize) receiverTotalSize = data.totalFilesSize || data.fileSize;
+    if (!receiverTotalSize) {
+        receiverTotalSize = data.totalFilesSize || data.fileSize;
+    }
     logFile(`📥 ${data.fileName} (${formatSize(data.fileSize)})`);
     updateReceiverProgress(data.fileName, 0);
 }
@@ -900,7 +1041,9 @@ async function handleChunk(data) {
                     setStatus(`🎉 Completado en ${duration}s`, 'ok');
                     playCompleteSound();
                     saveHistory({ type: 'receive', fileName: fd.name, size: formatSize(fd.size), time: new Date().toLocaleString(), duration: `${duration}s` });
-                    receiverTransferStartTime = 0; receiverTotalSize = 0; receiverBytesReceived = 0;
+                    receiverTransferStartTime = 0;
+                    receiverTotalSize = 0;
+                    receiverBytesReceived = 0;
                 }
             }
         } catch (err) {
@@ -918,8 +1061,11 @@ function downloadFileFallback(fileData) {
     if (!blob.size) { logFile('❌ Blob vacío'); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = fileData.name;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    a.href = url;
+    a.download = fileData.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
     logFile(`✅ ${fileData.name} descargado (${formatSize(blob.size)})`);
     delete receivedFiles[fileData.fileId];
@@ -928,11 +1074,15 @@ function downloadFileFallback(fileData) {
         setStatus(`🎉 Completado en ${duration}s`, 'ok');
         playCompleteSound();
         saveHistory({ type: 'receive', fileName: fileData.name, size: formatSize(fileData.size), time: new Date().toLocaleString(), duration: `${duration}s` });
-        receiverTransferStartTime = 0; receiverTotalSize = 0; receiverBytesReceived = 0;
+        receiverTransferStartTime = 0;
+        receiverTotalSize = 0;
+        receiverBytesReceived = 0;
     }
 }
 
-function finalizeFile(fileName) { }
+function finalizeFile(fileName) {
+    // No necesario, ya se maneja en downloadFile o en el stream
+}
 
 function updateReceiverProgress(fileName, percent) {
     const elapsed = (Date.now() - receiverTransferStartTime) / 1000 || 1;
@@ -946,7 +1096,8 @@ function updateReceiverProgress(fileName, percent) {
 window.onload = async () => {
     loadTheme();
     renderHistory();
-    startUserCounter(); // Iniciar contador simulado
+    loadSuggestions();
+    startUserCounter();
     const saved = localStorage.getItem(SESSION_KEY);
     if (saved) {
         const session = JSON.parse(saved);
