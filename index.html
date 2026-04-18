@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Comparte Archivos P2P - v9.0 (Sugerencias + PWA)</title>
+<title>Comparte Archivos P2P - v10.0 (Sugerencias en Nube)</title>
 <!-- Librerías externas -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -230,7 +230,7 @@ input, button { padding: 10px; font-size: 0.9rem; }
 <div id="history-list"></div>
 </div>
 
-<!-- SECCIÓN DE SUGERENCIAS (solo formulario público) -->
+<!-- SECCIÓN DE SUGERENCIAS (con nube) -->
 <div class="suggestions-section">
 <h3>💬 Envíanos tu sugerencia</h3>
 <div class="row" style="gap:8px; flex-wrap:wrap;">
@@ -277,14 +277,14 @@ input, button { padding: 10px; font-size: 0.9rem; }
 </div>
 </div>
 
-<!-- Modal administrador de sugerencias (solo visible con contraseña) -->
+<!-- Modal administrador de sugerencias (con nube) -->
 <div id="adminModal" class="modal">
 <div class="modal-content" style="max-width: 500px;">
 <h3>🔒 Panel de administración</h3>
 <input type="password" id="adminPassword" placeholder="Contraseña">
 <button onclick="checkAdminPassword()" class="btn-action">Acceder</button>
 <div id="adminPanelContent" style="display:none; margin-top: 16px;">
-<h4>Sugerencias recibidas</h4>
+<h4>Sugerencias recibidas (globales)</h4>
 <div id="adminSuggestionsList" style="max-height: 300px; overflow-y: auto; text-align: left;"></div>
 <button onclick="closeAdminModal()" class="close-modal">Cerrar</button>
 </div>
@@ -292,40 +292,110 @@ input, button { padding: 10px; font-size: 0.9rem; }
 </div>
 
 <script>
-// ==================== NUEVO: SUGERENCIAS PRIVADAS ====================
-const SUGGESTIONS_KEY = 'p2p_suggestions';
-let suggestions = [];
+// ==================== SUGERENCIAS EN NUBE (JSONBin.io) ====================
+const BIN_ID = "69e2dec436566621a8c617e8";
+const API_KEY = "$2a$10$k0pb7i62omvFea/Raed2A.91BbhTypdZuFcfqZHihibkHbTqUnJfq";
 
-function loadSuggestions() {
-    const stored = localStorage.getItem(SUGGESTIONS_KEY);
-    if (stored) suggestions = JSON.parse(stored);
-    else suggestions = [];
+// Cargar sugerencias desde la nube
+async function loadSuggestionsFromCloud() {
+    try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+            headers: { "X-Master-Key": API_KEY }
+        });
+        const data = await response.json();
+        // El bin guarda un objeto con propiedad "sugerencias"
+        if (data.record && Array.isArray(data.record.sugerencias)) {
+            return data.record.sugerencias;
+        } else if (Array.isArray(data.record)) {
+            return data.record;
+        }
+        return [];
+    } catch (error) {
+        console.error("Error al leer sugerencias:", error);
+        return [];
+    }
 }
 
-function saveSuggestions() {
-    localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(suggestions));
+// Guardar sugerencias en la nube
+async function saveSuggestionsToCloud(sugerencias) {
+    try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Master-Key": API_KEY
+            },
+            body: JSON.stringify({ sugerencias: sugerencias })
+        });
+        return response.ok;
+    } catch (error) {
+        console.error("Error al guardar sugerencias:", error);
+        return false;
+    }
 }
 
-function sendSuggestion() {
+// Enviar una nueva sugerencia (pública)
+async function sendSuggestion() {
     const name = document.getElementById('sug-name').value.trim();
     const text = document.getElementById('sug-text').value.trim();
     if (!name) return showToast('❌ Debes escribir tu nombre', 'error');
     if (!text) return showToast('❌ Escribe una sugerencia', 'error');
-    
-    suggestions.unshift({
-        name: name,
-        text: text,
-        date: Date.now()
+
+    const sugerencias = await loadSuggestionsFromCloud();
+    sugerencias.unshift({
+        id: Date.now(),
+        nombre: name,
+        sugerencia: text,
+        fecha: new Date().toLocaleString()
     });
-    saveSuggestions();
-    document.getElementById('sug-name').value = '';
-    document.getElementById('sug-text').value = '';
-    const thankYouDiv = document.getElementById('suggestionThankyou');
-    thankYouDiv.style.display = 'block';
-    setTimeout(() => { thankYouDiv.style.display = 'none'; }, 3000);
-    showToast('✅ Sugerencia enviada, ¡gracias!', 'success');
+
+    const ok = await saveSuggestionsToCloud(sugerencias);
+    if (ok) {
+        document.getElementById('sug-name').value = '';
+        document.getElementById('sug-text').value = '';
+        const thankYouDiv = document.getElementById('suggestionThankyou');
+        thankYouDiv.style.display = 'block';
+        setTimeout(() => { thankYouDiv.style.display = 'none'; }, 3000);
+        showToast('✅ Sugerencia enviada, ¡gracias!', 'success');
+    } else {
+        showToast('❌ Error al enviar. Inténtalo de nuevo', 'error');
+    }
 }
 
+// Admin: mostrar sugerencias
+async function renderAdminSuggestions() {
+    const container = document.getElementById('adminSuggestionsList');
+    if (!container) return;
+    const sugerencias = await loadSuggestionsFromCloud();
+    if (sugerencias.length === 0) {
+        container.innerHTML = '<div>No hay sugerencias aún.</div>';
+        return;
+    }
+    container.innerHTML = sugerencias.map((s, idx) => `
+        <div class="suggestion-item" style="margin-bottom:8px;">
+            <strong>${escapeHtml(s.nombre)}</strong> <span class="suggestion-date">${escapeHtml(s.fecha)}</span>
+            <div>${escapeHtml(s.sugerencia)}</div>
+            <button class="btn-delete-suggestion" onclick="deleteSuggestion(${idx})">Eliminar</button>
+        </div>
+    `).join('');
+}
+
+// Admin: eliminar sugerencia
+async function deleteSuggestion(index) {
+    if (confirm('¿Eliminar esta sugerencia permanentemente?')) {
+        const sugerencias = await loadSuggestionsFromCloud();
+        sugerencias.splice(index, 1);
+        const ok = await saveSuggestionsToCloud(sugerencias);
+        if (ok) {
+            renderAdminSuggestions();
+            showToast('Sugerencia eliminada', 'success');
+        } else {
+            showToast('Error al eliminar', 'error');
+        }
+    }
+}
+
+// Admin: control de acceso con contraseña
 function openAdminModal() {
     document.getElementById('adminModal').style.display = 'flex';
     document.getElementById('adminPassword').value = '';
@@ -334,36 +404,13 @@ function openAdminModal() {
 function closeAdminModal() {
     document.getElementById('adminModal').style.display = 'none';
 }
-function checkAdminPassword() {
+async function checkAdminPassword() {
     const pwd = document.getElementById('adminPassword').value;
     if (pwd === 'chanchito') {
         document.getElementById('adminPanelContent').style.display = 'block';
-        renderAdminSuggestions();
+        await renderAdminSuggestions();
     } else {
         showToast('❌ Contraseña incorrecta', 'error');
-    }
-}
-function renderAdminSuggestions() {
-    const container = document.getElementById('adminSuggestionsList');
-    if (!container) return;
-    if (suggestions.length === 0) {
-        container.innerHTML = '<div>No hay sugerencias aún.</div>';
-        return;
-    }
-    container.innerHTML = suggestions.map((s, idx) => `
-        <div class="suggestion-item" style="margin-bottom:8px;">
-            <strong>${escapeHtml(s.name)}</strong> <span class="suggestion-date">${new Date(s.date).toLocaleString()}</span>
-            <div>${escapeHtml(s.text)}</div>
-            <button class="btn-delete-suggestion" onclick="deleteSuggestion(${idx})">Eliminar</button>
-        </div>
-    `).join('');
-}
-function deleteSuggestion(index) {
-    if (confirm('¿Eliminar esta sugerencia permanentemente?')) {
-        suggestions.splice(index, 1);
-        saveSuggestions();
-        renderAdminSuggestions();
-        showToast('Sugerencia eliminada', 'success');
     }
 }
 
@@ -1109,8 +1156,7 @@ function updateReceiverProgress(fileName, percent) {
 window.onload = async () => {
     loadTheme();
     renderHistory();
-    loadSuggestions();      // Cargar sugerencias guardadas
-    startUserCounter();     // Iniciar contador simulado
+    startUserCounter();
     const saved = localStorage.getItem(SESSION_KEY);
     if (saved) {
         const session = JSON.parse(saved);
