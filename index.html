@@ -2,13 +2,28 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v8.8 (Donaciones + Usuarios)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Comparte Archivos P2P - v9.0 (Sugerencias + PWA)</title>
 <!-- Librerías externas -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- PWA manifest (inline) -->
+<link rel="manifest" href="data:application/manifest+json,{
+  \"name\": \"P2P File Transfer\",
+  \"short_name\": \"P2P Transfer\",
+  \"start_url\": \".\",
+  \"display\": \"standalone\",
+  \"background_color\": \"#0b1120\",
+  \"theme_color\": \"#3b82f6\",
+  \"icons\": [{
+    \"src\": \"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%233b82f6'/%3E%3Ctext x='50' y='67' font-size='50' text-anchor='middle' fill='white'%3E📡%3C/text%3E%3C/svg%3E\",
+    \"sizes\": \"any\",
+    \"type\": \"image/svg+xml\",
+    \"purpose\": \"any maskable\"
+  }]
+}">
 <style>
 :root {
 --bg: #0b1120;
@@ -37,8 +52,8 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; display: fl
 .user-counter { background: var(--accent); padding: 4px 10px; border-radius: 40px; font-size: 0.75rem; font-weight: bold; display: inline-flex; align-items: center; gap: 5px; cursor: help; }
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; color: var(--text); font-size: 1.2rem; }
 .row { display: flex; gap: 10px; margin-bottom: 12px; }
-input, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.95rem; }
-input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+input, button, textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.95rem; }
+input:focus, textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
 button { cursor: pointer; font-weight: 600; border: none; transition: all 0.2s; }
 .btn-role { flex: 1; background: var(--border); color: var(--text); padding: 16px; font-size: 1.1rem; }
 .btn-role.active { background: var(--accent); color: white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
@@ -96,7 +111,7 @@ align-items: center;
 .button-group button { margin-top: 0; }
 
 /* Modal de donaciones */
-.modal {
+.modal, .admin-modal {
 display: none;
 position: fixed;
 top: 0; left: 0;
@@ -106,21 +121,31 @@ z-index: 2000;
 justify-content: center;
 align-items: center;
 }
-.modal-content {
+.modal-content, .admin-modal-content {
 background: var(--card);
 border-radius: 16px;
 padding: 20px;
-max-width: 320px;
+max-width: 500px;
 width: 90%;
 text-align: center;
 border: 1px solid var(--border);
 }
-.modal-content h3 { margin-bottom: 16px; color: var(--accent); }
+.modal-content h3, .admin-modal-content h3 { margin-bottom: 16px; color: var(--accent); }
 .donate-item { background: var(--bg); margin: 12px 0; padding: 12px; border-radius: 12px; text-align: left; }
 .donate-item strong { display: block; color: var(--accent); margin-bottom: 6px; }
 .donate-item code { display: block; word-break: break-all; font-family: monospace; font-size: 0.9rem; background: var(--card); padding: 6px; border-radius: 6px; margin-top: 4px; }
 .btn-copy { background: var(--accent); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; margin-top: 6px; cursor: pointer; }
 .close-modal { background: var(--error); color: white; margin-top: 16px; padding: 8px; border-radius: 8px; width: 100%; border: none; cursor: pointer; }
+
+/* Sugerencias */
+.suggestions-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+.suggestions-section h3 { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.thankyou-message { color: var(--success); font-size: 0.85rem; margin-top: 6px; text-align: center; }
+.suggestions-list { background: var(--bg); border-radius: 10px; padding: 10px; max-height: 300px; overflow-y: auto; margin: 10px 0; font-size: 0.85rem; }
+.suggestion-item { border-bottom: 1px solid var(--border); padding: 8px 0; }
+.suggestion-item strong { color: var(--accent); }
+.suggestion-date { font-size: 0.7rem; opacity: 0.7; float: right; }
+.btn-delete-suggestion { background: var(--error); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; margin-left: 8px; cursor: pointer; }
 
 @media (max-width: 480px) {
 .container { padding: 1rem; }
@@ -204,6 +229,18 @@ input, button { padding: 10px; font-size: 0.9rem; }
 </div>
 <div id="history-list"></div>
 </div>
+
+<!-- SECCIÓN DE SUGERENCIAS (solo formulario público) -->
+<div class="suggestions-section">
+<h3>💬 Envíanos tu sugerencia</h3>
+<div class="row" style="gap:8px; flex-wrap:wrap;">
+<input type="text" id="sug-name" placeholder="Tu nombre *" style="flex:1;">
+<textarea id="sug-text" rows="3" placeholder="Escribe tu sugerencia (sin límite de caracteres)..." style="flex:2;"></textarea>
+<button onclick="sendSuggestion()" style="flex:0 0 auto; background: var(--success);">Enviar</button>
+</div>
+<div id="suggestionThankyou" class="thankyou-message" style="display:none;">✅ ¡Gracias por tu sugerencia! Nos ayuda a mejorar.</div>
+</div>
+
 <div id="status" class="status wait">⏳ Selecciona Emisor o Receptor</div>
 <div class="button-group">
 <button class="btn-back" onclick="goBackToRoleSelection()">◀ Volver</button>
@@ -240,21 +277,125 @@ input, button { padding: 10px; font-size: 0.9rem; }
 </div>
 </div>
 
+<!-- Modal administrador de sugerencias (solo visible con contraseña) -->
+<div id="adminModal" class="modal">
+<div class="modal-content" style="max-width: 500px;">
+<h3>🔒 Panel de administración</h3>
+<input type="password" id="adminPassword" placeholder="Contraseña">
+<button onclick="checkAdminPassword()" class="btn-action">Acceder</button>
+<div id="adminPanelContent" style="display:none; margin-top: 16px;">
+<h4>Sugerencias recibidas</h4>
+<div id="adminSuggestionsList" style="max-height: 300px; overflow-y: auto; text-align: left;"></div>
+<button onclick="closeAdminModal()" class="close-modal">Cerrar</button>
+</div>
+</div>
+</div>
+
 <script>
+// ==================== NUEVO: SUGERENCIAS PRIVADAS ====================
+const SUGGESTIONS_KEY = 'p2p_suggestions';
+let suggestions = [];
+
+function loadSuggestions() {
+    const stored = localStorage.getItem(SUGGESTIONS_KEY);
+    if (stored) suggestions = JSON.parse(stored);
+    else suggestions = [];
+}
+
+function saveSuggestions() {
+    localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(suggestions));
+}
+
+function sendSuggestion() {
+    const name = document.getElementById('sug-name').value.trim();
+    const text = document.getElementById('sug-text').value.trim();
+    if (!name) return showToast('❌ Debes escribir tu nombre', 'error');
+    if (!text) return showToast('❌ Escribe una sugerencia', 'error');
+    
+    suggestions.unshift({
+        name: name,
+        text: text,
+        date: Date.now()
+    });
+    saveSuggestions();
+    document.getElementById('sug-name').value = '';
+    document.getElementById('sug-text').value = '';
+    const thankYouDiv = document.getElementById('suggestionThankyou');
+    thankYouDiv.style.display = 'block';
+    setTimeout(() => { thankYouDiv.style.display = 'none'; }, 3000);
+    showToast('✅ Sugerencia enviada, ¡gracias!', 'success');
+}
+
+function openAdminModal() {
+    document.getElementById('adminModal').style.display = 'flex';
+    document.getElementById('adminPassword').value = '';
+    document.getElementById('adminPanelContent').style.display = 'none';
+}
+function closeAdminModal() {
+    document.getElementById('adminModal').style.display = 'none';
+}
+function checkAdminPassword() {
+    const pwd = document.getElementById('adminPassword').value;
+    if (pwd === 'chanchito') {
+        document.getElementById('adminPanelContent').style.display = 'block';
+        renderAdminSuggestions();
+    } else {
+        showToast('❌ Contraseña incorrecta', 'error');
+    }
+}
+function renderAdminSuggestions() {
+    const container = document.getElementById('adminSuggestionsList');
+    if (!container) return;
+    if (suggestions.length === 0) {
+        container.innerHTML = '<div>No hay sugerencias aún.</div>';
+        return;
+    }
+    container.innerHTML = suggestions.map((s, idx) => `
+        <div class="suggestion-item" style="margin-bottom:8px;">
+            <strong>${escapeHtml(s.name)}</strong> <span class="suggestion-date">${new Date(s.date).toLocaleString()}</span>
+            <div>${escapeHtml(s.text)}</div>
+            <button class="btn-delete-suggestion" onclick="deleteSuggestion(${idx})">Eliminar</button>
+        </div>
+    `).join('');
+}
+function deleteSuggestion(index) {
+    if (confirm('¿Eliminar esta sugerencia permanentemente?')) {
+        suggestions.splice(index, 1);
+        saveSuggestions();
+        renderAdminSuggestions();
+        showToast('Sugerencia eliminada', 'success');
+    }
+}
+
+// Añadir botón de administración en el título de sugerencias
+document.addEventListener('DOMContentLoaded', function() {
+    const suggestionsHeader = document.querySelector('.suggestions-section h3');
+    if (suggestionsHeader) {
+        const adminBtn = document.createElement('button');
+        adminBtn.textContent = '🔒 Admin';
+        adminBtn.style.background = 'var(--accent)';
+        adminBtn.style.padding = '4px 8px';
+        adminBtn.style.fontSize = '0.7rem';
+        adminBtn.style.width = 'auto';
+        adminBtn.style.marginLeft = '10px';
+        adminBtn.style.borderRadius = '6px';
+        adminBtn.onclick = openAdminModal;
+        suggestionsHeader.appendChild(adminBtn);
+    }
+});
+
 // ==================== CONTADOR DE USUARIOS SIMULADO ====================
 let userCounterInterval;
 function startUserCounter() {
     const userCountSpan = document.getElementById('userCount');
     if (!userCountSpan) return;
-    // Función para generar número aleatorio entre 5 y 45 (simula usuarios activos)
     function updateCounter() {
-        const randomUsers = Math.floor(Math.random() * 40) + 6; // 6 a 45
+        const randomUsers = Math.floor(Math.random() * 40) + 6;
         userCountSpan.textContent = randomUsers;
     }
     updateCounter();
-    userCounterInterval = setInterval(updateCounter, 10000); // cambia cada 10 segundos
+    userCounterInterval = setInterval(updateCounter, 10000);
 }
-// Detener el contador al salir (opcional)
 function stopUserCounter() {
     if (userCounterInterval) clearInterval(userCounterInterval);
 }
@@ -273,11 +414,33 @@ function copyToClipboard(text) {
         showToast('❌ No se pudo copiar', 'error');
     });
 }
-// Cerrar modal al hacer clic fuera del contenido
 window.onclick = function(event) {
     const modal = document.getElementById('donateModal');
+    const adminModal = document.getElementById('adminModal');
     if (event.target === modal) closeDonateModal();
+    if (event.target === adminModal) closeAdminModal();
 };
+
+// ==================== PWA - SERVICE WORKER ====================
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('data:application/javascript,' + encodeURIComponent(`
+        const CACHE_NAME = 'p2p-cache-v1';
+        const urlsToCache = [
+            './',
+            location.pathname,
+            'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+        ];
+        self.addEventListener('install', event => {
+            event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
+        });
+        self.addEventListener('fetch', event => {
+            event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
+        });
+    `)).then(() => console.log('SW registrado')).catch(err => console.log('SW error:', err));
+}
 
 // ==================== RESTO DEL CÓDIGO (transferencia P2P) ====================
 const CHUNK_SIZE = 256 * 1024;
@@ -946,7 +1109,8 @@ function updateReceiverProgress(fileName, percent) {
 window.onload = async () => {
     loadTheme();
     renderHistory();
-    startUserCounter(); // Iniciar contador simulado
+    loadSuggestions();      // Cargar sugerencias guardadas
+    startUserCounter();     // Iniciar contador simulado
     const saved = localStorage.getItem(SESSION_KEY);
     if (saved) {
         const session = JSON.parse(saved);
