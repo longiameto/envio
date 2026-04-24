@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparte Archivos P2P - v9.0</title>
+<title>Comparte Archivos P2P - v10.0 (Chat Cifrado)</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -33,7 +33,6 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; display: fl
 .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .title-section { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .title-section h1 { margin: 0; }
-/* Reemplazado: badge estático, honesto */
 .enc-badge { background: #1e3a5f; color: #60a5fa; padding: 4px 10px; border-radius: 40px; font-size: 0.75rem; font-weight: bold; display: inline-flex; align-items: center; gap: 5px; }
 [data-theme="light"] .enc-badge { background: #dbeafe; color: #1d4ed8; }
 .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; color: var(--text); font-size: 1.2rem; }
@@ -142,6 +141,93 @@ border: 1px solid var(--border);
 .donate-item code { display: block; word-break: break-all; font-family: monospace; font-size: 0.9rem; background: var(--card); padding: 6px; border-radius: 6px; margin-top: 4px; }
 .btn-copy { background: var(--accent); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; margin-top: 6px; cursor: pointer; }
 .close-modal { background: var(--error); color: white; margin-top: 16px; padding: 8px; border-radius: 8px; width: 100%; border: none; cursor: pointer; }
+
+/* Chat styles */
+.chat-container {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  overflow: hidden;
+  transition: all 0.2s;
+}
+.chat-header {
+  background: var(--accent);
+  padding: 8px 12px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.chat-minimize {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  width: auto;
+}
+.chat-messages {
+  height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--card);
+}
+.chat-message {
+  max-width: 80%;
+  padding: 6px 10px;
+  border-radius: 16px;
+  word-break: break-word;
+  font-size: 0.9rem;
+}
+.chat-message.mine {
+  align-self: flex-end;
+  background: var(--accent);
+  color: white;
+}
+.chat-message.other {
+  align-self: flex-start;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.chat-message .sender {
+  font-size: 0.7rem;
+  font-weight: bold;
+  margin-bottom: 2px;
+  opacity: 0.8;
+}
+.chat-input-wrapper {
+  display: flex;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+#chatInput {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  padding: 10px 12px;
+  background: var(--card);
+  color: var(--text);
+}
+#chatSendBtn {
+  width: auto;
+  padding: 0 16px;
+  margin: 0;
+  border-radius: 0;
+  background: var(--accent);
+}
+.chat-note {
+  font-size: 0.7rem;
+  padding: 4px 8px;
+  text-align: center;
+  background: var(--bg);
+  opacity: 0.7;
+}
 @media (max-width: 480px) {
 .container { padding: 1rem; }
 .btn-role { padding: 12px; font-size: 1rem; }
@@ -149,6 +235,7 @@ input, button { padding: 10px; font-size: 0.9rem; }
 .drop-zone { min-height: 140px; padding: 20px; }
 .title-section { gap: 8px; }
 .btn-sugerencias { top: 15px; left: 15px; padding: 6px 12px; font-size: 0.8rem; }
+.chat-messages { height: 160px; }
 }
 </style>
 </head>
@@ -161,7 +248,6 @@ input, button { padding: 10px; font-size: 0.9rem; }
   <div class="header-row">
     <div class="title-section">
       <h1>📡 Transferencia P2P</h1>
-      <!-- Reemplazado contador falso por badge honesto -->
       <div class="enc-badge">🔒 AES-256</div>
     </div>
     <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
@@ -226,6 +312,21 @@ input, button { padding: 10px; font-size: 0.9rem; }
     </div>
     <div id="history-list"></div>
   </div>
+
+  <!-- CHAT P2P CIFRADO -->
+  <div id="chatContainer" class="chat-container hidden">
+    <div class="chat-header">
+      <span>💬 Chat cifrado con el otro usuario</span>
+      <button class="chat-minimize" onclick="toggleChatMinimize()">−</button>
+    </div>
+    <div id="chatMessages" class="chat-messages"></div>
+    <div class="chat-input-wrapper">
+      <input type="text" id="chatInput" placeholder="Escribe un mensaje..." maxlength="500" autocomplete="off">
+      <button id="chatSendBtn" onclick="sendChatMessage()">Enviar</button>
+    </div>
+    <div class="chat-note">🔒 Los mensajes viajan cifrados (AES-256) igual que los archivos</div>
+  </div>
+
   <div id="status" class="status wait">⏳ Selecciona Emisor o Receptor</div>
   <div class="button-group">
     <button class="btn-back" onclick="goBackToRoleSelection()">◀ Volver</button>
@@ -276,12 +377,11 @@ window.onclick = function(event) {
   if (event.target === modal) closeDonateModal();
 };
 
-// ==================== CIFRADO AES-GCM (SubtleCrypto nativo) ====================
-// Sin librerías externas. PBKDF2 para derivar clave, AES-GCM para cifrar cada chunk.
+// ==================== CIFRADO AES-GCM ====================
 const SALT_LEN = 16;
 const IV_LEN   = 12;
-let cryptoKey  = null; // CryptoKey activa (emisor y receptor comparten la misma)
-let senderSalt = null; // Uint8Array generada por el emisor
+let cryptoKey  = null;
+let senderSalt = null;
 
 async function deriveKey(password, salt) {
   const enc = new TextEncoder();
@@ -326,6 +426,65 @@ function b64ToBuf(b64) {
   return buf.buffer;
 }
 
+// ==================== CHAT ====================
+let chatVisible = true;
+
+function toggleChatMinimize() {
+  const messages = document.getElementById('chatMessages');
+  const wrapper = document.querySelector('.chat-input-wrapper');
+  const note = document.querySelector('.chat-note');
+  if (chatVisible) {
+    messages.style.display = 'none';
+    if (wrapper) wrapper.style.display = 'none';
+    if (note) note.style.display = 'none';
+    chatVisible = false;
+  } else {
+    messages.style.display = 'flex';
+    if (wrapper) wrapper.style.display = 'flex';
+    if (note) note.style.display = 'flex';
+    chatVisible = true;
+  }
+}
+
+function addChatMessage(text, isMine, senderName = '') {
+  const container = document.getElementById('chatMessages');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = `chat-message ${isMine ? 'mine' : 'other'}`;
+  if (!isMine && senderName) {
+    const nameSpan = document.createElement('div');
+    nameSpan.className = 'sender';
+    nameSpan.textContent = senderName;
+    div.appendChild(nameSpan);
+  }
+  const textSpan = document.createElement('div');
+  textSpan.textContent = text;
+  div.appendChild(textSpan);
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || !conn || !conn.open) return;
+
+  const myName = (role === 'send' ? 'Emisor' : 'Receptor');
+  const payload = { text: text, sender: myName };
+  const encoder = new TextEncoder();
+  let plainBuf = encoder.encode(JSON.stringify(payload));
+
+  let finalBuf;
+  if (cryptoKey) {
+    finalBuf = await encryptBuf(cryptoKey, plainBuf);
+  } else {
+    finalBuf = plainBuf;
+  }
+  conn.send({ type: 'chat', data: finalBuf });
+  addChatMessage(text, true);
+  input.value = '';
+}
+
 // ==================== ESTADO GENERAL ====================
 const CHUNK_SIZE  = 256 * 1024;
 const DB_NAME     = 'P2PTransferDB';
@@ -361,7 +520,6 @@ async function clearAllState() {
   } catch (e) { console.error('Clear error:', e); }
 }
 
-// ==================== UTILIDADES ====================
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
@@ -451,6 +609,9 @@ function goBackToRoleSelection() {
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-start').textContent = '🚀 Iniciar';
     clearFileInputs();
+    // Ocultar chat
+    const chatContainer = document.getElementById('chatContainer');
+    if (chatContainer) chatContainer.classList.add('hidden');
   }
 }
 function toggleTheme() {
@@ -478,7 +639,6 @@ function setRole(r) {
   }
 }
 
-// ==================== SETUP EMISOR (ahora async para derivar clave) ====================
 async function setupSender() {
   const idInput = document.getElementById('sender-id').value.trim();
   const pwd     = document.getElementById('sender-password').value;
@@ -487,7 +647,6 @@ async function setupSender() {
   transferId      = `p2p-${idInput}`;
   currentPassword = pwd;
 
-  // Derivar clave AES-256 si hay contraseña
   if (pwd) {
     senderSalt = crypto.getRandomValues(new Uint8Array(SALT_LEN));
     cryptoKey  = await deriveKey(pwd, senderSalt);
@@ -551,7 +710,7 @@ function clearFileInputs() {
   if (fo) fo.value = '';
 }
 
-// ==================== DRAG & DROP ====================
+// Drag & Drop
 function setupDragDrop() {
   const dropZone = document.getElementById('drop-zone');
   ['dragenter','dragover','dragleave','drop'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }));
@@ -670,11 +829,16 @@ function copyId() {
 // ==================== CONEXIÓN P2P ====================
 function setupConnection() {
   conn.on('error', err => { setStatus(`❌ Error: ${err}`, 'err'); showToast('❌ Error de conexión', 'error'); });
-  conn.on('close', () => { receiverConnected = false; setStatus('🔌 Desconectado', 'wait'); });
+  conn.on('close', () => { 
+    receiverConnected = false; 
+    setStatus('🔌 Desconectado', 'wait');
+    // Ocultar chat al desconectar
+    const chatContainer = document.getElementById('chatContainer');
+    if (chatContainer) chatContainer.classList.add('hidden');
+  });
   conn.on('open', () => {
     if (role === 'send') {
       conn.on('data', handleSenderData);
-      // ── NUEVO: emisor envía salt (si hay contraseña) para que receptor derive la misma clave
       if (senderSalt) {
         conn.send({ type: 'key_exchange', salt: bufToB64(senderSalt.buffer), encrypted: true });
       } else {
@@ -682,7 +846,6 @@ function setupConnection() {
       }
       setStatus('🔐 Esperando autenticación...', 'wait');
     } else {
-      // El receptor espera el key_exchange antes de autenticarse
       setStatus('🔐 Intercambiando claves...', 'wait');
     }
   });
@@ -691,11 +854,9 @@ function setupConnection() {
   }
 }
 
-// ── EMISOR: maneja datos entrantes del receptor
 async function handleSenderData(data) {
   if (data.type === 'auth') {
     if (cryptoKey) {
-      // Verificar challenge: receptor cifró "AUTH_CHECK" con la clave derivada
       try {
         const decrypted = await decryptBuf(cryptoKey, b64ToBuf(data.challenge));
         const text      = new TextDecoder().decode(decrypted);
@@ -704,6 +865,8 @@ async function handleSenderData(data) {
         receiverConnected = true;
         setStatus('✅ Receptor conectado (cifrado AES-256)', 'ok');
         showToast('🔗 Conectado con cifrado', 'success');
+        // Mostrar chat
+        document.getElementById('chatContainer').classList.remove('hidden');
         if (filesReady) setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
       } catch {
         conn.send({ type: 'auth_fail' });
@@ -712,17 +875,31 @@ async function handleSenderData(data) {
         setStatus('❌ Contraseña incorrecta', 'err');
       }
     } else {
-      // Sin contraseña → auth directa
       conn.send({ type: 'auth_ok' });
       receiverConnected = true;
       setStatus('✅ Receptor conectado', 'ok');
       showToast('🔗 Conectado', 'success');
+      document.getElementById('chatContainer').classList.remove('hidden');
       if (filesReady) setStatus('✅ Listo. ¡Pulsa INICIAR!', 'ok');
+    }
+  } else if (data.type === 'chat') {
+    // Mensaje de chat entrante (receptor -> emisor)
+    try {
+      let plainBuf;
+      if (cryptoKey) {
+        plainBuf = await decryptBuf(cryptoKey, data.data);
+      } else {
+        plainBuf = data.data;
+      }
+      const decoder = new TextDecoder();
+      const payload = JSON.parse(decoder.decode(plainBuf));
+      addChatMessage(payload.text, false, payload.sender);
+    } catch (err) {
+      console.error('Error descifrando chat:', err);
     }
   }
 }
 
-// ── RECEPTOR: maneja datos entrantes del emisor
 async function handleReceiverData(data) {
   if (data.type === 'key_exchange') {
     if (data.encrypted) {
@@ -731,16 +908,13 @@ async function handleReceiverData(data) {
         setStatus('❌ Se requiere contraseña', 'err');
         conn.close(); return;
       }
-      // Derivar la misma clave AES-256 usando el salt del emisor
       const salt  = new Uint8Array(b64ToBuf(data.salt));
       cryptoKey   = await deriveKey(currentPassword, salt);
-      // Enviar challenge cifrado para que el emisor verifique la clave
       const enc       = new TextEncoder();
       const challenge = await encryptBuf(cryptoKey, enc.encode('AUTH_CHECK'));
       conn.send({ type: 'auth', challenge: bufToB64(challenge) });
       setStatus('🔐 Autenticando...', 'wait');
     } else {
-      // Sin cifrado → auth directa
       conn.send({ type: 'auth' });
     }
   } else if (data.type === 'auth_ok') {
@@ -752,6 +926,8 @@ async function handleReceiverData(data) {
     receiverTransferStartTime = 0; receiverBytesReceived = 0; receiverTotalSize = 0;
     for (const key in receivedFiles) { if (receivedFiles[key].writableStream) receivedFiles[key].writableStream.close(); }
     receivedFiles = {};
+    // Mostrar chat
+    document.getElementById('chatContainer').classList.remove('hidden');
   } else if (data.type === 'auth_fail') {
     showToast('❌ Contraseña incorrecta', 'error');
     setStatus('❌ Contraseña incorrecta', 'err');
@@ -762,17 +938,30 @@ async function handleReceiverData(data) {
     await handleChunk(data);
   } else if (data.type === 'complete') {
     finalizeFile(data.fileName);
+  } else if (data.type === 'chat') {
+    // Mensaje de chat entrante (emisor -> receptor)
+    try {
+      let plainBuf;
+      if (cryptoKey) {
+        plainBuf = await decryptBuf(cryptoKey, data.data);
+      } else {
+        plainBuf = data.data;
+      }
+      const decoder = new TextDecoder();
+      const payload = JSON.parse(decoder.decode(plainBuf));
+      addChatMessage(payload.text, false, payload.sender);
+    } catch (err) {
+      console.error('Error descifrando chat:', err);
+    }
   }
 }
 
-// ==================== PEER ====================
 function initPeer() {
   peer = new Peer(transferId, { debug: 0 });
   peer.on('open', () => { setStatus('🟢 Listo. Esperando receptor...', 'ok'); showToast('✅ Listo', 'success'); });
   peer.on('connection', c => { conn = c; setupConnection(); });
   peer.on('error', err => {
     if (err.type === 'unavailable-id') {
-      // Mejorado: mensaje claro sobre ID en uso
       setStatus('⚠️ ID ya en uso. Si es tuyo, úsalo con contraseña para protegerlo. Si no, elige otro.', 'err');
       showToast('❌ ID ya está en uso por otro emisor', 'error');
     } else {
@@ -852,7 +1041,6 @@ async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
   for (let c = 0; c < totalChunks; c++) {
     const chunk  = zipBlob.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
     let   buffer = await chunk.arrayBuffer();
-    // ── CIFRADO: si hay clave, cifrar el chunk antes de enviar
     if (cryptoKey) buffer = await encryptBuf(cryptoKey, buffer);
     conn.send({ type: 'chunk', fileId, index: c, data: buffer, total: totalChunks });
     bytesTransferred += chunk.size;
@@ -882,7 +1070,6 @@ async function sendFile(file, index, totalSize) {
   for (let c = 0; c < totalChunks; c++) {
     const chunk  = file.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
     let   buffer = await chunk.arrayBuffer();
-    // ── CIFRADO: si hay clave, cifrar el chunk antes de enviar
     if (cryptoKey) buffer = await encryptBuf(cryptoKey, buffer);
     conn.send({ type: 'chunk', fileId, index: c, data: buffer, total: totalChunks });
     bytesTransferred += chunk.size;
@@ -928,7 +1115,6 @@ async function handleChunk(data) {
   const fd = receivedFiles[data.fileId];
   if (!fd) return;
 
-  // ── DESCIFRADO: si hay clave, descifrar el chunk recibido
   let chunkData = data.data;
   if (cryptoKey) {
     try {
@@ -1009,7 +1195,6 @@ function updateReceiverProgress(fileName, percent) {
 window.onload = async () => {
   loadTheme();
   renderHistory();
-  // Contador falso eliminado — reemplazado por badge estático en el HTML
   const saved = localStorage.getItem(SESSION_KEY);
   if (saved) {
     const session = JSON.parse(saved);
@@ -1023,6 +1208,13 @@ window.onload = async () => {
       localStorage.removeItem(SESSION_KEY);
       await clearAllState();
     }
+  }
+  // Configurar evento Enter en el chat
+  const chatInput = document.getElementById('chatInput');
+  if (chatInput) {
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendChatMessage();
+    });
   }
 };
 </script>
