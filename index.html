@@ -500,7 +500,6 @@
             <p style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px; margin-left:18px;">Conéctate al emisor para recibir archivos.</p>
         </div>
 
-        <!-- Cuadro de conexión (se oculta al conectar) -->
         <div class="card" id="receiver-connect-card">
             <div class="section-title">1. Conectar con el Emisor</div>
             <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">Ingresa el ID del emisor y la contraseña para conectarte.</p>
@@ -587,10 +586,11 @@
         }
     })();
 
-    // ==================== ESTADO GLOBAL ====================
-    const CHUNK_SIZE = 256 * 1024;
+    // ==================== CONFIGURACIÓN GLOBAL ====================
     const SALT_LEN = 16;
     const IV_LEN = 12;
+    const MAX_PARALLEL = 3;            // Transferencias simultáneas
+    const HIGH_WATER_MARK = 1024 * 1024; // 1 MB para control de flujo
     let peer, conn, role = null;
     let files = [];
     let selectedFolders = new Set();
@@ -601,10 +601,122 @@
     let filesReady = false;
     let transferId = '';
     let startTime, bytesTransferred = 0;
+    
+    // Chunk adaptable
+    let currentChunkSize = 256 * 1024; // 256 KB inicial
+    let speedHistory = [];
+    const SPEED_HISTORY_LENGTH = 5;
+
+    // Recepción
     let receivedFiles = {};
     let receiverBytesReceived = 0;
     let receiverTransferStartTime = 0;
     let receiverTotalSize = 0;
+
+    // IDB para reanudación y almacenamiento de chunks (receptor)
+    const DB_NAME = 'P2PTransferDB';
+    const DB_VERSION = 2;
+    let db = null;
+
+    // Cola de envío con control de flujo
+    let sendQueue = [];
+    let isDraining = false;
+
+    // Notificaciones nativas
+    let notificationsEnabled = false;
+
+    // ==================== BASE DE DATOS INDEXEDDB ====================
+    function openDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = (e) => {
+                const database = e.target.result;
+                if (!database.objectStoreNames.contains('chunks')) {
+                    database.createObjectStore('chunks', { keyPath: 'id' });
+                }
+                if (!database.objectStoreNames.contains('transferState')) {
+                    database.createObjectStore('transferState', { keyPath: 'id' });
+                }
+            };
+            request.onsuccess = (e) => {
+                db = e.target.result;
+                resolve(db);
+            };
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    async function saveChunk(fileId, chunkIndex, data) {
+        if (!db) await openDB();
+        const tx = db.transaction('chunks', 'readwrite');
+        const store = tx.objectStore('chunks');
+        await store.put({ id: `${fileId}_${chunkIndex}`, data: data });
+    }
+
+    async function getChunk(fileId, chunkIndex) {
+        if (!db) await openDB();
+        const tx = db.transaction('chunks', 'readonly');
+        const store = tx.objectStore('chunks');
+        const request = store.get(`${fileId}_${chunkIndex}`);
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result ? request.result.data : null);
+            request.onerror = reject;
+        });
+    }
+
+    async function deleteFileChunks(fileId, totalChunks) {
+        if (!db) await openDB();
+        const tx = db.transaction('chunks', 'readwrite');
+        const store = tx.objectStore('chunks');
+        for (let i = 0; i < totalChunks; i++) {
+            store.delete(`${fileId}_${i}`);
+        }
+    }
+
+    async function saveTransferState(state) {
+        if (!db) await openDB();
+        const tx = db.transaction('transferState', 'readwrite');
+        const store = tx.objectStore('transferState');
+        await store.put(state);
+    }
+
+    async function getTransferState(id) {
+        if (!db) await openDB();
+        const tx = db.transaction('transferState', 'readonly');
+        const store = tx.objectStore('transferState');
+        const request = store.get(id);
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = reject;
+        });
+    }
+
+    async function clearTransferState(id) {
+        if (!db) await openDB();
+        const tx = db.transaction('transferState', 'readwrite');
+        const store = tx.objectStore('transferState');
+        store.delete(id);
+    }
+
+    // ==================== NOTIFICACIONES ====================
+    async function requestNotificationPermission() {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            notificationsEnabled = true;
+        } else if (Notification.permission !== 'denied') {
+            const permission = await Notification.requestPermission();
+            notificationsEnabled = permission === 'granted';
+        }
+    }
+
+    function showNotification(title, body) {
+        if (notificationsEnabled) {
+            new Notification(title, { body, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📁</text></svg>' });
+        }
+    }
+
+    // Llamar al cargar
+    requestNotificationPermission();
 
     // ==================== NAVEGACIÓN ====================
     function setRole(r) {
@@ -848,7 +960,6 @@
         if (files.length > 0) {
             filesReady = true;
             document.getElementById('file-list-display').classList.remove('hidden');
-            const totalSize = files.reduce((sum, f) => sum + f.size, 0);
             let html = '';
             const renderedFolders = new Set();
             files.forEach((f, i) => {
@@ -925,9 +1036,19 @@
             if (role === 'send') {
                 document.getElementById('sender-chat-container').classList.add('hidden');
                 document.getElementById('chat-status-text').textContent = 'No disponible';
+                // Guardar estado de transferencia para reanudación
+                if (bytesTransferred > 0) {
+                    saveTransferState({
+                        id: transferId,
+                        role: 'send',
+                        files: files.map(f => ({ name: f.name, size: f.size, path: f.webkitRelativePath || null })),
+                        bytesTransferred,
+                        totalSize: files.reduce((s, f) => s + f.size, 0)
+                    });
+                }
             } else {
                 document.getElementById('receiver-chat-container').classList.add('hidden');
-                showConnectCard(); // Volver a mostrar el formulario si se desconecta
+                showConnectCard();
             }
         });
         conn.on('open', () => {
@@ -939,6 +1060,14 @@
                     conn.send({ type: 'key_exchange', encrypted: false });
                 }
                 updateSenderStatus('Autenticando...', 'waiting');
+                // Configurar control de flujo ondrain
+                conn.on('drain', () => {
+                    if (sendQueue.length > 0) {
+                        processSendQueue();
+                    } else {
+                        isDraining = false;
+                    }
+                });
             } else {
                 conn.on('data', handleReceiverData);
                 updateReceiverStatus('Intercambiando claves...', 'waiting');
@@ -958,6 +1087,8 @@
                     updateSenderStatus('Conectado (AES-256)', 'active');
                     showChat();
                     updateStartButton();
+                    // Verificar si hay transferencia previa para reanudar
+                    checkResumeTransfer();
                 } catch {
                     conn.send({ type: 'auth_fail' });
                     setTimeout(() => conn.close(), 100);
@@ -970,7 +1101,13 @@
                 updateSenderStatus('Conectado', 'active');
                 showChat();
                 updateStartButton();
+                checkResumeTransfer();
             }
+        } else if (data.type === 'ack') {
+            // Confirmación de archivo recibido
+            const fileId = data.fileId;
+            logFileMessage(`✅ ${fileId} confirmado por receptor`);
+            // Aquí podríamos eliminarlo de la cola de pendientes si implementáramos ACK por archivo
         } else if (data.type === 'chat') {
             try {
                 let plainBuf;
@@ -982,6 +1119,21 @@
                 const payload = JSON.parse(new TextDecoder().decode(plainBuf));
                 addChatMessage(payload.text, false, payload.sender);
             } catch (e) { console.error(e); }
+        }
+    }
+
+    async function checkResumeTransfer() {
+        const state = await getTransferState(transferId);
+        if (state && state.role === 'send' && state.bytesTransferred > 0) {
+            if (confirm(`Hay una transferencia interrumpida. ¿Deseas reanudarla?`)) {
+                // Reanudar no es trivial sin saber exactamente qué archivos fallaron.
+                // En esta implementación reiniciamos el envío completo de los archivos restantes.
+                bytesTransferred = 0; // Reiniciar contador
+                startTransfer(); // Esto enviará todos los archivos de nuevo
+                await clearTransferState(transferId);
+            } else {
+                await clearTransferState(transferId);
+            }
         }
     }
 
@@ -1004,7 +1156,7 @@
             }
         } else if (data.type === 'auth_ok') {
             updateReceiverStatus('Conectado (cifrado)', 'active');
-            hideConnectCard(); // 👈 Oculta el formulario de conexión
+            hideConnectCard();
             showChat();
         } else if (data.type === 'auth_fail') {
             alert('Contraseña incorrecta');
@@ -1014,7 +1166,7 @@
         } else if (data.type === 'chunk') {
             handleChunk(data);
         } else if (data.type === 'complete') {
-            // nada especial
+            // Archivo completado (puede venir junto con último chunk)
         } else if (data.type === 'chat') {
             try {
                 let plainBuf;
@@ -1064,88 +1216,182 @@
         });
     }
 
-    // ==================== TRANSFERENCIA (EMISOR) ====================
+    // ==================== CHUNK AUTO AJUSTABLE ====================
+    function updateChunkSize(speedBytesPerSec) {
+        speedHistory.push(speedBytesPerSec);
+        if (speedHistory.length > SPEED_HISTORY_LENGTH) speedHistory.shift();
+        const avgSpeed = speedHistory.reduce((a,b) => a+b, 0) / speedHistory.length;
+        if (avgSpeed > 1024 * 1024) { // > 1 MB/s
+            currentChunkSize = Math.min(1024 * 1024, currentChunkSize * 2);
+        } else if (avgSpeed < 100 * 1024) { // < 100 KB/s
+            currentChunkSize = Math.max(64 * 1024, currentChunkSize / 2);
+        }
+        // Redondear a múltiplos de 64KB
+        currentChunkSize = Math.round(currentChunkSize / (64*1024)) * (64*1024);
+    }
+
+    // ==================== TRANSFERENCIA (EMISOR) CON PARALELISMO Y CONTROL DE FLUJO ====================
     async function startTransfer() {
         if (!files.length || !conn || !conn.open) return;
         document.getElementById('progress-area').classList.remove('hidden');
         const totalSize = files.reduce((s, f) => s + f.size, 0);
         startTime = Date.now();
         bytesTransferred = 0;
+        speedHistory = [];
 
-        const folders = [...selectedFolders];
-        for (const folderName of folders) {
-            const zip = new JSZip();
-            const folderFiles = files.filter(f => f.webkitRelativePath?.startsWith(folderName + '/'));
-            for (const file of folderFiles) {
-                const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
-                zip.file(relativePath, await file.arrayBuffer());
-            }
-            const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-            await sendFileAsZip(zipBlob, folderName + '.zip', zipBlob.size, totalSize);
-            files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
-            selectedFolders.delete(folderName);
+        // Crear lista de tareas (carpetas ZIP y archivos individuales)
+        const tasks = [];
+        for (const folderName of selectedFolders) {
+            tasks.push({ type: 'folder', name: folderName });
         }
-
         for (const file of files) {
-            await sendFile(file, totalSize);
+            if (!file.webkitRelativePath || !file.webkitRelativePath.includes('/')) {
+                tasks.push({ type: 'file', file });
+            }
         }
+
+        // Función para ejecutar una tarea
+        const runTask = async (task) => {
+            if (task.type === 'folder') {
+                const folderName = task.name;
+                const zip = new JSZip();
+                const folderFiles = files.filter(f => f.webkitRelativePath?.startsWith(folderName + '/'));
+                for (const file of folderFiles) {
+                    const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
+                    zip.file(relativePath, await file.arrayBuffer());
+                }
+                const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+                await sendFileAsZip(zipBlob, folderName + '.zip', zipBlob.size, totalSize);
+                // Eliminar archivos de carpeta ya enviados
+                files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
+                selectedFolders.delete(folderName);
+            } else {
+                const file = task.file;
+                await sendFile(file, totalSize);
+                files = files.filter(f => f !== file);
+            }
+        };
+
+        // Ejecutar tareas en paralelo limitado
+        const pool = [];
+        for (const task of tasks) {
+            const promise = runTask(task);
+            pool.push(promise);
+            if (pool.length >= MAX_PARALLEL) {
+                await Promise.race(pool);
+                pool.splice(pool.findIndex(p => p === promise), 1);
+            }
+        }
+        await Promise.all(pool);
+
         alert('Transferencia completada');
+        showNotification('Transferencia completada', 'Todos los archivos han sido enviados.');
         document.getElementById('progress-area').classList.add('hidden');
     }
 
-    async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
-        return new Promise(async resolve => {
-            const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
-            conn.send({ type: 'file_info', fileName, fileSize, totalChunks, fileId: fileName, totalFilesSize: totalSize });
-            for (let i = 0; i < totalChunks; i++) {
-                const chunk = zipBlob.slice(i * CHUNK_SIZE, (i+1) * CHUNK_SIZE);
-                let buffer = await chunk.arrayBuffer();
+    // Envío de un archivo (con chunks ajustables y control de flujo)
+    async function sendFile(file, totalSize) {
+        const fileName = file.webkitRelativePath || file.name;
+        const fileSize = file.size;
+        let offset = 0;
+        let fileBytesSent = 0;
+        return new Promise((resolve, reject) => {
+            const sendNextChunk = async () => {
+                if (offset >= fileSize) {
+                    // Enviar mensaje de finalización
+                    conn.send({ type: 'complete', fileName });
+                    logFileMessage(`✅ ${fileName} enviado`);
+                    resolve();
+                    return;
+                }
+                const end = Math.min(offset + currentChunkSize, fileSize);
+                const chunkBlob = file.slice(offset, end);
+                let buffer = await chunkBlob.arrayBuffer();
                 if (cryptoKey) buffer = await encryptBuf(cryptoKey, buffer);
-                conn.send({ type: 'chunk', fileId: fileName, index: i, data: buffer, total: totalChunks });
-                bytesTransferred += chunk.size;
+                const chunkData = buffer;
+                const chunkIndex = Math.floor(offset / currentChunkSize);
+                conn.send({ type: 'chunk', fileId: fileName, index: chunkIndex, data: chunkData, total: Math.ceil(fileSize / currentChunkSize) });
+                const sent = end - offset;
+                fileBytesSent += sent;
+                bytesTransferred += sent;
+                offset = end;
                 updateProgressUI(fileName, totalSize);
-                if (conn.bufferedAmount > 1024*1024) await sleep(300);
-                else await sleep(50);
-            }
-            resolve();
+                
+                // Control de flujo: si el buffer está lleno, esperar drain
+                if (conn.bufferedAmount > HIGH_WATER_MARK) {
+                    isDraining = true;
+                    sendQueue.push(sendNextChunk);
+                } else {
+                    // Pequeña pausa para no saturar la CPU
+                    await sleep(10);
+                    sendNextChunk();
+                }
+            };
+            sendNextChunk();
         });
     }
 
-    async function sendFile(file, totalSize) {
-        return new Promise(async resolve => {
-            const fileName = file.webkitRelativePath || file.name;
-            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            conn.send({ type: 'file_info', fileName, fileSize: file.size, totalChunks, fileId: fileName, totalFilesSize: totalSize });
-            for (let i = 0; i < totalChunks; i++) {
-                const start = i * CHUNK_SIZE;
-                const end = Math.min(file.size, start + CHUNK_SIZE);
-                let buffer = await file.slice(start, end).arrayBuffer();
+    async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
+        let offset = 0;
+        return new Promise((resolve, reject) => {
+            const sendNextChunk = async () => {
+                if (offset >= fileSize) {
+                    conn.send({ type: 'complete', fileName });
+                    logFileMessage(`✅ ${fileName} enviado`);
+                    resolve();
+                    return;
+                }
+                const end = Math.min(offset + currentChunkSize, fileSize);
+                const chunkBlob = zipBlob.slice(offset, end);
+                let buffer = await chunkBlob.arrayBuffer();
                 if (cryptoKey) buffer = await encryptBuf(cryptoKey, buffer);
-                conn.send({ type: 'chunk', fileId: fileName, index: i, data: buffer, total: totalChunks });
-                bytesTransferred += (end - start);
+                const chunkIndex = Math.floor(offset / currentChunkSize);
+                conn.send({ type: 'chunk', fileId: fileName, index: chunkIndex, data: buffer, total: Math.ceil(fileSize / currentChunkSize) });
+                offset = end;
+                bytesTransferred += (end - offset);
                 updateProgressUI(fileName, totalSize);
-                if (conn.bufferedAmount > 1024*1024) await sleep(300);
-                else await sleep(50);
-            }
-            resolve();
+                
+                if (conn.bufferedAmount > HIGH_WATER_MARK) {
+                    isDraining = true;
+                    sendQueue.push(sendNextChunk);
+                } else {
+                    await sleep(10);
+                    sendNextChunk();
+                }
+            };
+            sendNextChunk();
         });
+    }
+
+    function processSendQueue() {
+        if (sendQueue.length > 0) {
+            const next = sendQueue.shift();
+            next();
+        } else {
+            isDraining = false;
+        }
     }
 
     function updateProgressUI(fileName, totalSize) {
         const percent = Math.min(100, (bytesTransferred / totalSize) * 100);
         const elapsed = (Date.now() - startTime) / 1000 || 1;
         const speed = bytesTransferred / elapsed;
+        updateChunkSize(speed); // Ajustar chunk size según velocidad
         const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
         document.getElementById('progress-file-name').textContent = fileName;
         document.getElementById('progress-bar').style.width = percent + '%';
         document.getElementById('progress-speed').textContent = speed > 1048576 ? (speed/1048576).toFixed(1) + ' MB/s' : (speed/1024).toFixed(0) + ' KB/s';
         document.getElementById('progress-eta').textContent = remaining > 0 && remaining < 86400 ? `⏳ ${Math.floor(remaining/60)}:${String(Math.floor(remaining%60)).padStart(2,'0')}` : '--:--';
-        document.getElementById('file-log').innerHTML += `<div>📤 ${escapeHtml(fileName)} ${percent.toFixed(0)}%</div>`;
+    }
+
+    function logFileMessage(msg) {
+        const log = document.getElementById('file-log');
+        if (log) log.innerHTML += `<div>${escapeHtml(msg)}</div>`;
     }
 
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-    // ==================== RECEPCIÓN DE ARCHIVOS ====================
+    // ==================== RECEPCIÓN DE ARCHIVOS (con IndexedDB para archivos grandes) ====================
     async function handleFileInfo(data) {
         if (Object.keys(receivedFiles).length === 0) {
             receiverTransferStartTime = Date.now();
@@ -1160,9 +1406,11 @@
             name: data.fileName,
             size: data.fileSize,
             totalChunks: data.totalChunks,
-            chunks: new Array(data.totalChunks),
-            received: 0
+            receivedCount: 0,
+            fileId: data.fileId
         };
+        // Inicializar almacenamiento de chunks en IndexedDB (limpiar si existía)
+        await deleteFileChunks(data.fileId, data.totalChunks);
     }
 
     async function handleChunk(data) {
@@ -1173,12 +1421,15 @@
             try { chunkData = await decryptBuf(cryptoKey, data.data); }
             catch { return; }
         }
-        if (fd.chunks[data.index] === undefined) {
-            fd.chunks[data.index] = chunkData;
-            fd.received++;
+        // Verificar si ya tenemos este chunk (por reenvíos)
+        const existing = await getChunk(data.fileId, data.index);
+        if (!existing) {
+            await saveChunk(data.fileId, data.index, chunkData);
+            fd.receivedCount++;
             receiverBytesReceived += chunkData.byteLength;
         }
-        const percent = (fd.received / fd.totalChunks) * 100;
+
+        const percent = (fd.receivedCount / fd.totalChunks) * 100;
         document.getElementById('recv-bar').style.width = percent + '%';
         const elapsed = (Date.now() - receiverTransferStartTime) / 1000 || 1;
         const speed = receiverBytesReceived / elapsed;
@@ -1186,11 +1437,28 @@
         document.getElementById('recv-speed').textContent = speed > 1048576 ? (speed/1048576).toFixed(1)+' MB/s' : (speed/1024).toFixed(0)+' KB/s';
         document.getElementById('recv-eta').textContent = remaining > 0 && remaining < 86400 ? `⏳ ${Math.floor(remaining/60)}:${String(Math.floor(remaining%60)).padStart(2,'0')}` : '--:--';
 
-        if (fd.received === fd.totalChunks) {
-            const blob = new Blob(fd.chunks.filter(c => c !== undefined));
+        if (fd.receivedCount === fd.totalChunks) {
+            // Reconstruir archivo desde IndexedDB
+            const chunks = [];
+            for (let i = 0; i < fd.totalChunks; i++) {
+                const chunk = await getChunk(data.fileId, i);
+                if (chunk) chunks.push(chunk);
+            }
+            const blob = new Blob(chunks);
             saveAs(blob, fd.name);
+            // Limpiar chunks de IndexedDB
+            await deleteFileChunks(data.fileId, fd.totalChunks);
             delete receivedFiles[data.fileId];
             document.getElementById('receiver-progress-area').innerHTML += `<p style="color:var(--accent-green); font-size:0.7rem;">✓ ${escapeHtml(fd.name)} guardado</p>`;
+            // Enviar ACK al emisor
+            if (conn && conn.open) {
+                conn.send({ type: 'ack', fileId: data.fileId });
+            }
+            // Notificación
+            showNotification('Archivo recibido', `Descarga completada: ${fd.name}`);
+            if (Object.keys(receivedFiles).length === 0) {
+                showNotification('Transferencia completada', 'Todos los archivos han sido recibidos.');
+            }
         }
     }
 
