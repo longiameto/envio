@@ -11,7 +11,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
-        /* ======== TEMA OSCURO (POR DEFECTO) ======== */
         :root {
             --bg-main: #0b0e14;
             --bg-card: #161b22;
@@ -26,7 +25,6 @@
             --font: 'Inter', system-ui, -apple-system, sans-serif;
         }
 
-        /* ======== TEMA CLARO ======== */
         [data-theme="light"] {
             --bg-main: #f8fafc;
             --bg-card: #ffffff;
@@ -60,7 +58,6 @@
             gap: 16px;
         }
 
-        /* --- HEADER --- */
         .app-header {
             display: flex;
             justify-content: space-between;
@@ -75,7 +72,6 @@
         .icon-btn { background: none; border: none; color: var(--text-primary); cursor: pointer; opacity: 0.8; transition: opacity 0.2s; }
         .icon-btn:hover { opacity: 1; }
 
-        /* --- TARJETAS --- */
         .card {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -95,7 +91,6 @@
             gap: 8px;
         }
 
-        /* --- MENÚ PRINCIPAL --- */
         .welcome-text { text-align: center; margin: 20px 0; }
         .welcome-text h1 { font-size: 1.4rem; margin-bottom: 8px; }
         .welcome-text p { color: var(--text-secondary); font-size: 0.85rem; }
@@ -142,7 +137,6 @@
         [data-theme="light"] .suggest-card { background: #e2e8f0; }
         .donate-card { background: linear-gradient(90deg, #63231e 0%, #a34e1c 100%); border: none; }
 
-        /* --- INPUTS Y BOTONES --- */
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group i { position: absolute; left: 12px; top: 12px; color: var(--text-secondary); }
         input {
@@ -171,7 +165,6 @@
         .btn-send { background: var(--accent-purple); color: white; }
         .btn-receive { background: var(--accent-green); color: white; }
 
-        /* --- EMISOR ESPECÍFICO --- */
         .id-badge {
             background: var(--bg-input);
             padding: 12px;
@@ -197,18 +190,15 @@
         }
         .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent-purple); background: rgba(124, 58, 237, 0.05); }
 
-        /* --- STATUS DOTS --- */
         .status-line { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-secondary); margin-top: 10px; }
         .dot { width: 8px; height: 8px; border-radius: 50%; background: #4b5563; }
         .dot.active { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
         .dot.waiting { background: var(--accent-orange); }
         .dot.error { background: var(--error); }
 
-        /* --- UTILS --- */
         .hidden { display: none; }
         .v10-tag { text-align: right; font-size: 0.7rem; color: var(--text-secondary); margin-top: 10px; opacity: 0.5; }
         
-        /* ======== CHAT CIFRADO ======== */
         .chat-container {
             margin-top: 16px;
             border: 1px solid var(--border);
@@ -298,7 +288,6 @@
             opacity: 0.7;
         }
 
-        /* Progress Bar */
         .progress-wrapper { margin-top: 15px; }
         .bar-bg { background: var(--bg-input); height: 6px; border-radius: 3px; overflow: hidden; margin: 8px 0; }
         .bar-fill { background: var(--accent-purple); height: 100%; width: 0%; transition: width 0.3s; }
@@ -395,7 +384,6 @@
             </button>
         </header>
 
-        <!-- Configuración inicial del emisor -->
         <div id="sender-setup-card">
             <div class="card">
                 <div class="section-title">1. Configurar conexión</div>
@@ -415,7 +403,6 @@
             </div>
         </div>
 
-        <!-- UI activa del emisor (tras crear ID) -->
         <div id="sender-active-ui" class="hidden">
             <div class="card">
                 <div class="section-title">Tu ID de conexión</div>
@@ -435,7 +422,6 @@
                     <p style="font-size:0.7rem; opacity:0.7">o haz clic para seleccionar</p>
                 </div>
                 <input type="file" id="file-input" multiple class="hidden" onchange="handleFilesSelected()">
-                <!-- También permitimos carpetas -->
                 <input type="file" id="folder-input" webkitdirectory directory multiple class="hidden" onchange="handleFilesSelected()">
                 
                 <div id="file-list-display" class="hidden" style="max-height:120px; overflow-y:auto; margin-bottom:12px; font-size:0.8rem;"></div>
@@ -461,7 +447,6 @@
                 </button>
             </div>
 
-            <!-- Progreso de envío -->
             <div id="progress-area" class="hidden" style="margin-top:12px;">
                 <div class="card">
                     <div class="progress-wrapper">
@@ -476,7 +461,6 @@
                 </div>
             </div>
 
-            <!-- Chat del emisor -->
             <div id="sender-chat-container" class="chat-container hidden">
                 <div class="chat-header">
                     <span>💬 Chat cifrado con el receptor</span>
@@ -516,7 +500,8 @@
             <p style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px; margin-left:18px;">Conéctate al emisor para recibir archivos.</p>
         </div>
 
-        <div class="card">
+        <!-- Cuadro de conexión (se oculta al conectar) -->
+        <div class="card" id="receiver-connect-card">
             <div class="section-title">1. Conectar con el Emisor</div>
             <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">Ingresa el ID del emisor y la contraseña para conectarte.</p>
             
@@ -539,7 +524,6 @@
             <span id="receiver-status-text">Esperando conexión...</span>
         </div>
 
-        <!-- Progreso de recepción -->
         <div class="card" id="transfer-card">
             <div class="section-title"><i data-lucide="arrow-down-to-line" size="16"></i> Transferencias</div>
             <div id="receiver-progress-area" style="text-align: center; padding: 10px;">
@@ -547,7 +531,6 @@
             </div>
         </div>
 
-        <!-- Chat del receptor -->
         <div id="receiver-chat-container" class="chat-container hidden">
             <div class="chat-header">
                 <span>💬 Chat cifrado con el emisor</span>
@@ -562,15 +545,15 @@
         </div>
     </div>
 
-    <!-- Modal de donaciones (simple) -->
+    <!-- Modal de donaciones -->
     <div id="donate-modal" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;z-index:1000;">
         <div style="background:var(--bg-card); border-radius:16px; padding:24px; max-width:320px; text-align:center;">
             <h3 style="color:var(--accent-purple); margin-bottom:16px;">❤️ Apoya el proyecto</h3>
             <div style="text-align:left; margin-bottom:12px;">
-                <strong>PayPal:</strong> longiameto@hotmail.com
-                <br><strong>Binance ID:</strong> 63377372
-                <br><strong>PIX:</strong> 41996329162
-                <br><strong>Yape:</strong> 935 307 316
+                <strong>PayPal:</strong> longiameto@hotmail.com<br>
+                <strong>Binance ID:</strong> 63377372<br>
+                <strong>PIX:</strong> 41996329162<br>
+                <strong>Yape:</strong> 935 307 316
             </div>
             <button class="btn-primary" style="background:var(--error); margin-top:12px;" onclick="document.getElementById('donate-modal').style.display='none'">Cerrar</button>
         </div>
@@ -578,10 +561,9 @@
 </div>
 
 <script>
-    // ==================== INICIALIZAR ICONOS ====================
     lucide.createIcons();
 
-    // ==================== TEMA (SOLUCIÓN AL BOTÓN) ====================
+    // ==================== TEMA ====================
     function toggleTheme() {
         const html = document.documentElement;
         const currentTheme = html.getAttribute('data-theme');
@@ -589,15 +571,13 @@
         html.setAttribute('data-theme', newTheme);
         localStorage.setItem('p2p-theme', newTheme);
         
-        // Cambiar icono
         const icon = document.getElementById('theme-icon');
         if (icon) {
             icon.setAttribute('data-lucide', newTheme === 'light' ? 'sun' : 'moon');
-            lucide.createIcons(); // re-renderizar
+            lucide.createIcons();
         }
     }
 
-    // Cargar tema guardado
     (function loadTheme() {
         const saved = localStorage.getItem('p2p-theme');
         if (saved === 'light') {
@@ -621,7 +601,6 @@
     let filesReady = false;
     let transferId = '';
     let startTime, bytesTransferred = 0;
-    // Recepción
     let receivedFiles = {};
     let receiverBytesReceived = 0;
     let receiverTransferStartTime = 0;
@@ -757,7 +736,6 @@
             : document.getElementById('receiver-chat-container');
         if (container) {
             container.classList.remove('hidden');
-            // También actualizar el texto de estado en minicard
             if (role === 'send') {
                 const chatStatus = document.getElementById('chat-status-text');
                 if (chatStatus) chatStatus.textContent = 'Activo 🔒';
@@ -783,12 +761,10 @@
             cryptoKey = null;
         }
 
-        // UI
         document.getElementById('sender-setup-card').classList.add('hidden');
         document.getElementById('sender-active-ui').classList.remove('hidden');
         document.getElementById('display-my-id').textContent = idInput;
 
-        // QR
         document.getElementById('qrcode').innerHTML = '';
         new QRCode(document.getElementById('qrcode'), {
             text: idInput,
@@ -814,7 +790,6 @@
         });
     }
 
-    // ==================== DRAG & DROP + SELECCIÓN ====================
     function setupDragDrop() {
         const dropZone = document.getElementById('drop-zone');
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -941,17 +916,18 @@
     function setupConnection() {
         conn.on('error', err => {
             updateSenderStatus('Error de conexión', 'error');
+            if (role === 'receiver') showConnectCard();
         });
         conn.on('close', () => {
             receiverConnected = false;
             updateSenderStatus('Desconectado', 'waiting');
             updateStartButton();
-            // ocultar chat
             if (role === 'send') {
                 document.getElementById('sender-chat-container').classList.add('hidden');
                 document.getElementById('chat-status-text').textContent = 'No disponible';
             } else {
                 document.getElementById('receiver-chat-container').classList.add('hidden');
+                showConnectCard(); // Volver a mostrar el formulario si se desconecta
             }
         });
         conn.on('open', () => {
@@ -1028,6 +1004,7 @@
             }
         } else if (data.type === 'auth_ok') {
             updateReceiverStatus('Conectado (cifrado)', 'active');
+            hideConnectCard(); // 👈 Oculta el formulario de conexión
             showChat();
         } else if (data.type === 'auth_fail') {
             alert('Contraseña incorrecta');
@@ -1052,12 +1029,21 @@
         }
     }
 
+    function hideConnectCard() {
+        const card = document.getElementById('receiver-connect-card');
+        if (card) card.classList.add('hidden');
+    }
+
+    function showConnectCard() {
+        const card = document.getElementById('receiver-connect-card');
+        if (card) card.classList.remove('hidden');
+    }
+
     function updateReceiverStatus(text, statusClass) {
         const dot = document.getElementById('receiver-status-dot');
         const span = document.getElementById('receiver-status-text');
         if (dot) dot.className = 'dot ' + statusClass;
         if (span) span.textContent = text;
-        // También actualizar el dot de la tarjeta superior
         const mainDot = document.getElementById('receiver-main-dot');
         if (mainDot) mainDot.className = 'dot ' + statusClass;
     }
@@ -1086,7 +1072,6 @@
         startTime = Date.now();
         bytesTransferred = 0;
 
-        // Procesar carpetas primero
         const folders = [...selectedFolders];
         for (const folderName of folders) {
             const zip = new JSZip();
@@ -1101,7 +1086,6 @@
             selectedFolders.delete(folderName);
         }
 
-        // Archivos individuales
         for (const file of files) {
             await sendFile(file, totalSize);
         }
