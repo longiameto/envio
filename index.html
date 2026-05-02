@@ -58,12 +58,7 @@
             gap: 16px;
         }
 
-        .app-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-        }
+        .app-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
         .logo-section { display: flex; align-items: center; gap: 10px; }
         .logo-section h2 { font-size: 1.2rem; font-weight: 700; }
         .logo-section p { font-size: 0.75rem; color: var(--text-secondary); }
@@ -82,14 +77,7 @@
             transition: background 0.3s, border-color 0.3s;
         }
 
-        .section-title {
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        .section-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 
         .welcome-text { text-align: center; margin: 20px 0; }
         .welcome-text h1 { font-size: 1.4rem; margin-bottom: 8px; }
@@ -97,15 +85,8 @@
 
         .role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
         .role-card {
-            border-radius: 16px;
-            padding: 24px 16px;
-            text-align: center;
-            cursor: pointer;
-            transition: transform 0.2s;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
+            border-radius: 16px; padding: 24px 16px; text-align: center; cursor: pointer;
+            transition: transform 0.2s; display: flex; flex-direction: column; align-items: center; gap: 12px;
             border: 1px solid transparent;
         }
         .role-card:hover { transform: translateY(-4px); }
@@ -117,22 +98,11 @@
         .role-receiver { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
 
         .circle-arrow {
-            margin-top: 10px;
-            width: 32px; height: 32px;
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(255,255,255,0.1);
+            margin-top: 10px; width: 32px; height: 32px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1);
         }
 
-        .action-card {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px;
-            border-radius: 12px;
-            cursor: pointer;
-            margin-bottom: 10px;
-        }
+        .action-card { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-radius: 12px; cursor: pointer; margin-bottom: 10px; }
         .suggest-card { background: #1c2128; border: 1px solid var(--border); }
         [data-theme="light"] .suggest-card { background: #e2e8f0; }
         .donate-card { background: linear-gradient(90deg, #63231e 0%, #a34e1c 100%); border: none; }
@@ -140,53 +110,26 @@
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group i { position: absolute; left: 12px; top: 12px; color: var(--text-secondary); }
         input {
-            width: 100%;
-            padding: 12px 12px 12px 40px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-            transition: background 0.3s, border-color 0.3s;
+            width: 100%; padding: 12px 12px 12px 40px; background: var(--bg-input);
+            border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); font-size: 0.9rem;
         }
         .btn-primary {
-            width: 100%;
-            padding: 14px;
-            border-radius: 10px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: opacity 0.2s;
+            width: 100%; padding: 14px; border-radius: 10px; border: none; font-weight: 600;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
         }
         .btn-send { background: var(--accent-purple); color: white; }
         .btn-receive { background: var(--accent-green); color: white; }
 
         .id-badge {
-            background: var(--bg-input);
-            padding: 12px;
-            border-radius: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
+            background: var(--bg-input); padding: 12px; border-radius: 10px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
         }
         .id-text { font-family: monospace; color: var(--accent-purple); font-weight: bold; font-size: 1.1rem; }
-        
         .qr-area { background: white; padding: 10px; border-radius: 12px; width: fit-content; margin: 15px auto; }
         
         .drop-zone {
-            border: 2px dashed var(--border);
-            border-radius: 16px;
-            padding: 30px;
-            text-align: center;
-            cursor: pointer;
-            color: var(--text-secondary);
-            margin: 15px 0;
-            transition: all 0.2s;
+            border: 2px dashed var(--border); border-radius: 16px; padding: 30px; text-align: center;
+            cursor: pointer; color: var(--text-secondary); margin: 15px 0; transition: all 0.2s;
         }
         .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent-purple); background: rgba(124, 58, 237, 0.05); }
 
@@ -200,93 +143,31 @@
         .v10-tag { text-align: right; font-size: 0.7rem; color: var(--text-secondary); margin-top: 10px; opacity: 0.5; }
         
         .chat-container {
-            margin-top: 16px;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            background: var(--bg-card);
-            overflow: hidden;
-            transition: all 0.3s;
+            margin-top: 16px; border: 1px solid var(--border); border-radius: 12px;
+            background: var(--bg-card); overflow: hidden; transition: all 0.3s;
         }
         .chat-header {
-            background: var(--accent-purple);
-            padding: 8px 12px;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            cursor: pointer;
-            color: white;
+            background: var(--accent-purple); padding: 8px 12px; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: white;
         }
-        .chat-minimize {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 1.2rem;
-            cursor: pointer;
-            padding: 0 4px;
-        }
+        .chat-minimize { background: none; border: none; color: white; font-size: 1.2rem; cursor: pointer; padding: 0 4px; }
         .chat-messages {
-            height: 200px;
-            overflow-y: auto;
-            padding: 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            background: var(--bg-input);
+            height: 200px; overflow-y: auto; padding: 8px; display: flex;
+            flex-direction: column; gap: 6px; background: var(--bg-input);
         }
         .chat-message {
-            max-width: 80%;
-            padding: 6px 10px;
-            border-radius: 16px;
-            word-break: break-word;
-            font-size: 0.85rem;
+            max-width: 80%; padding: 6px 10px; border-radius: 16px; word-break: break-word; font-size: 0.85rem;
         }
-        .chat-message.mine {
-            align-self: flex-end;
-            background: var(--accent-purple);
-            color: white;
-        }
-        .chat-message.other {
-            align-self: flex-start;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-        }
-        .chat-message .sender {
-            font-size: 0.65rem;
-            font-weight: bold;
-            margin-bottom: 2px;
-            opacity: 0.8;
-        }
-        .chat-input-row {
-            display: flex;
-            border-top: 1px solid var(--border);
-            background: var(--bg-card);
-        }
-        #chatInput {
-            flex: 1;
-            border: none;
-            border-radius: 0;
-            padding: 10px 12px;
-            background: var(--bg-card);
-            color: var(--text-primary);
-        }
+        .chat-message.mine { align-self: flex-end; background: var(--accent-purple); color: white; }
+        .chat-message.other { align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border); }
+        .chat-message .sender { font-size: 0.65rem; font-weight: bold; margin-bottom: 2px; opacity: 0.8; }
+        .chat-input-row { display: flex; border-top: 1px solid var(--border); background: var(--bg-card); }
+        #chatInput { flex: 1; border: none; border-radius: 0; padding: 10px 12px; background: var(--bg-card); color: var(--text-primary); }
         #chatSendBtn {
-            width: auto;
-            padding: 0 16px;
-            margin: 0;
-            border-radius: 0;
-            background: var(--accent-purple);
-            border: none;
-            color: white;
-            cursor: pointer;
+            width: auto; padding: 0 16px; margin: 0; border-radius: 0; background: var(--accent-purple);
+            border: none; color: white; cursor: pointer;
         }
-        .chat-note {
-            font-size: 0.65rem;
-            padding: 4px 8px;
-            text-align: center;
-            background: var(--bg-input);
-            opacity: 0.7;
-        }
+        .chat-note { font-size: 0.65rem; padding: 4px 8px; text-align: center; background: var(--bg-input); opacity: 0.7; }
 
         .progress-wrapper { margin-top: 15px; }
         .bar-bg { background: var(--bg-input); height: 6px; border-radius: 3px; overflow: hidden; margin: 8px 0; }
@@ -589,8 +470,11 @@
     // ==================== CONFIGURACIÓN GLOBAL ====================
     const SALT_LEN = 16;
     const IV_LEN = 12;
-    const MAX_PARALLEL = 3;            // Transferencias simultáneas
+    const MAX_PARALLEL = 3;             // Transferencias simultáneas
     const HIGH_WATER_MARK = 1024 * 1024; // 1 MB para control de flujo
+    const DB_NAME = 'P2PTransferDB';
+    const DB_VERSION = 2;
+
     let peer, conn, role = null;
     let files = [];
     let selectedFolders = new Set();
@@ -600,12 +484,11 @@
     let receiverConnected = false;
     let filesReady = false;
     let transferId = '';
-    let startTime, bytesTransferred = 0;
-    
+    let startTime = 0, bytesTransferred = 0;
+
     // Chunk adaptable
     let currentChunkSize = 256 * 1024; // 256 KB inicial
     let speedHistory = [];
-    const SPEED_HISTORY_LENGTH = 5;
 
     // Recepción
     let receivedFiles = {};
@@ -613,48 +496,46 @@
     let receiverTransferStartTime = 0;
     let receiverTotalSize = 0;
 
-    // IDB para reanudación y almacenamiento de chunks (receptor)
-    const DB_NAME = 'P2PTransferDB';
-    const DB_VERSION = 2;
-    let db = null;
-
-    // Cola de envío con control de flujo
+    // Control de flujo ondrain
     let sendQueue = [];
     let isDraining = false;
 
+    // IndexedDB
+    let dbPromise;
+
     // Notificaciones nativas
     let notificationsEnabled = false;
+
+    // Chat anti-duplicados
+    let processedMessageIds = new Set();
 
     // ==================== BASE DE DATOS INDEXEDDB ====================
     function openDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
             request.onupgradeneeded = (e) => {
-                const database = e.target.result;
-                if (!database.objectStoreNames.contains('chunks')) {
-                    database.createObjectStore('chunks', { keyPath: 'id' });
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('chunks')) {
+                    db.createObjectStore('chunks', { keyPath: 'id' });
                 }
-                if (!database.objectStoreNames.contains('transferState')) {
-                    database.createObjectStore('transferState', { keyPath: 'id' });
+                if (!db.objectStoreNames.contains('transferState')) {
+                    db.createObjectStore('transferState', { keyPath: 'id' });
                 }
             };
-            request.onsuccess = (e) => {
-                db = e.target.result;
-                resolve(db);
-            };
+            request.onsuccess = (e) => resolve(e.target.result);
             request.onerror = (e) => reject(e.target.error);
         });
     }
+    dbPromise = openDB();
 
     async function saveChunk(fileId, chunkIndex, data) {
-        if (!db) await openDB();
+        const db = await dbPromise;
         const tx = db.transaction('chunks', 'readwrite');
-        const store = tx.objectStore('chunks');
-        await store.put({ id: `${fileId}_${chunkIndex}`, data: data });
+        await tx.objectStore('chunks').put({ id: `${fileId}_${chunkIndex}`, data: data });
     }
 
     async function getChunk(fileId, chunkIndex) {
-        if (!db) await openDB();
+        const db = await dbPromise;
         const tx = db.transaction('chunks', 'readonly');
         const store = tx.objectStore('chunks');
         const request = store.get(`${fileId}_${chunkIndex}`);
@@ -665,7 +546,7 @@
     }
 
     async function deleteFileChunks(fileId, totalChunks) {
-        if (!db) await openDB();
+        const db = await dbPromise;
         const tx = db.transaction('chunks', 'readwrite');
         const store = tx.objectStore('chunks');
         for (let i = 0; i < totalChunks; i++) {
@@ -674,14 +555,13 @@
     }
 
     async function saveTransferState(state) {
-        if (!db) await openDB();
+        const db = await dbPromise;
         const tx = db.transaction('transferState', 'readwrite');
-        const store = tx.objectStore('transferState');
-        await store.put(state);
+        await tx.objectStore('transferState').put(state);
     }
 
     async function getTransferState(id) {
-        if (!db) await openDB();
+        const db = await dbPromise;
         const tx = db.transaction('transferState', 'readonly');
         const store = tx.objectStore('transferState');
         const request = store.get(id);
@@ -692,10 +572,9 @@
     }
 
     async function clearTransferState(id) {
-        if (!db) await openDB();
+        const db = await dbPromise;
         const tx = db.transaction('transferState', 'readwrite');
-        const store = tx.objectStore('transferState');
-        store.delete(id);
+        tx.objectStore('transferState').delete(id);
     }
 
     // ==================== NOTIFICACIONES ====================
@@ -714,8 +593,6 @@
             new Notification(title, { body, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📁</text></svg>' });
         }
     }
-
-    // Llamar al cargar
     requestNotificationPermission();
 
     // ==================== NAVEGACIÓN ====================
@@ -792,7 +669,9 @@
             : document.getElementById('receiver-chat-input');
     }
 
-    function addChatMessage(text, isMine, senderName = '') {
+    function addChatMessage(text, isMine, senderName = '', messageId = '') {
+        if (messageId && processedMessageIds.has(messageId)) return;
+        if (messageId) processedMessageIds.add(messageId);
         const container = getChatMessagesContainer();
         if (!container) return;
         const div = document.createElement('div');
@@ -814,8 +693,9 @@
         const input = getChatInput();
         const text = input?.value.trim();
         if (!text || !conn || !conn.open) return;
+        const msgId = Date.now() + Math.random().toString(36);
         const myName = role === 'send' ? 'Emisor' : 'Receptor';
-        const payload = { text, sender: myName };
+        const payload = { text, sender: myName, id: msgId };
         const encoder = new TextEncoder();
         let plainBuf = encoder.encode(JSON.stringify(payload));
         let finalBuf;
@@ -824,8 +704,8 @@
         } else {
             finalBuf = plainBuf;
         }
-        conn.send({ type: 'chat', data: finalBuf });
-        addChatMessage(text, true);
+        conn.send({ type: 'chat', data: finalBuf, id: msgId });
+        addChatMessage(text, true, '', msgId);
         input.value = '';
     }
 
@@ -960,6 +840,7 @@
         if (files.length > 0) {
             filesReady = true;
             document.getElementById('file-list-display').classList.remove('hidden');
+            const totalSize = files.reduce((sum, f) => sum + f.size, 0);
             let html = '';
             const renderedFolders = new Set();
             files.forEach((f, i) => {
@@ -1036,7 +917,7 @@
             if (role === 'send') {
                 document.getElementById('sender-chat-container').classList.add('hidden');
                 document.getElementById('chat-status-text').textContent = 'No disponible';
-                // Guardar estado de transferencia para reanudación
+                // Guardar estado para posible reanudación
                 if (bytesTransferred > 0) {
                     saveTransferState({
                         id: transferId,
@@ -1050,6 +931,9 @@
                 document.getElementById('receiver-chat-container').classList.add('hidden');
                 showConnectCard();
             }
+            // Limpiar listeners para evitar duplicados
+            conn.off('data');
+            conn.off('drain');
         });
         conn.on('open', () => {
             if (role === 'send') {
@@ -1060,7 +944,7 @@
                     conn.send({ type: 'key_exchange', encrypted: false });
                 }
                 updateSenderStatus('Autenticando...', 'waiting');
-                // Configurar control de flujo ondrain
+                // Configurar evento drain para control de flujo
                 conn.on('drain', () => {
                     if (sendQueue.length > 0) {
                         processSendQueue();
@@ -1087,7 +971,6 @@
                     updateSenderStatus('Conectado (AES-256)', 'active');
                     showChat();
                     updateStartButton();
-                    // Verificar si hay transferencia previa para reanudar
                     checkResumeTransfer();
                 } catch {
                     conn.send({ type: 'auth_fail' });
@@ -1103,11 +986,6 @@
                 updateStartButton();
                 checkResumeTransfer();
             }
-        } else if (data.type === 'ack') {
-            // Confirmación de archivo recibido
-            const fileId = data.fileId;
-            logFileMessage(`✅ ${fileId} confirmado por receptor`);
-            // Aquí podríamos eliminarlo de la cola de pendientes si implementáramos ACK por archivo
         } else if (data.type === 'chat') {
             try {
                 let plainBuf;
@@ -1117,7 +995,7 @@
                     plainBuf = data.data;
                 }
                 const payload = JSON.parse(new TextDecoder().decode(plainBuf));
-                addChatMessage(payload.text, false, payload.sender);
+                addChatMessage(payload.text, false, payload.sender, payload.id);
             } catch (e) { console.error(e); }
         }
     }
@@ -1126,10 +1004,8 @@
         const state = await getTransferState(transferId);
         if (state && state.role === 'send' && state.bytesTransferred > 0) {
             if (confirm(`Hay una transferencia interrumpida. ¿Deseas reanudarla?`)) {
-                // Reanudar no es trivial sin saber exactamente qué archivos fallaron.
-                // En esta implementación reiniciamos el envío completo de los archivos restantes.
-                bytesTransferred = 0; // Reiniciar contador
-                startTransfer(); // Esto enviará todos los archivos de nuevo
+                bytesTransferred = 0; // Reiniciar contador para reanudar
+                startTransfer(); // Esto reenviará todos los archivos restantes (en la lista 'files' actual)
                 await clearTransferState(transferId);
             } else {
                 await clearTransferState(transferId);
@@ -1166,7 +1042,7 @@
         } else if (data.type === 'chunk') {
             handleChunk(data);
         } else if (data.type === 'complete') {
-            // Archivo completado (puede venir junto con último chunk)
+            // nada especial
         } else if (data.type === 'chat') {
             try {
                 let plainBuf;
@@ -1176,7 +1052,7 @@
                     plainBuf = data.data;
                 }
                 const payload = JSON.parse(new TextDecoder().decode(plainBuf));
-                addChatMessage(payload.text, false, payload.sender);
+                addChatMessage(payload.text, false, payload.sender, payload.id);
             } catch (e) { console.error(e); }
         }
     }
@@ -1216,21 +1092,7 @@
         });
     }
 
-    // ==================== CHUNK AUTO AJUSTABLE ====================
-    function updateChunkSize(speedBytesPerSec) {
-        speedHistory.push(speedBytesPerSec);
-        if (speedHistory.length > SPEED_HISTORY_LENGTH) speedHistory.shift();
-        const avgSpeed = speedHistory.reduce((a,b) => a+b, 0) / speedHistory.length;
-        if (avgSpeed > 1024 * 1024) { // > 1 MB/s
-            currentChunkSize = Math.min(1024 * 1024, currentChunkSize * 2);
-        } else if (avgSpeed < 100 * 1024) { // < 100 KB/s
-            currentChunkSize = Math.max(64 * 1024, currentChunkSize / 2);
-        }
-        // Redondear a múltiplos de 64KB
-        currentChunkSize = Math.round(currentChunkSize / (64*1024)) * (64*1024);
-    }
-
-    // ==================== TRANSFERENCIA (EMISOR) CON PARALELISMO Y CONTROL DE FLUJO ====================
+    // ==================== TRANSFERENCIA MEJORADA (EMISOR) ====================
     async function startTransfer() {
         if (!files.length || !conn || !conn.open) return;
         document.getElementById('progress-area').classList.remove('hidden');
@@ -1239,7 +1101,7 @@
         bytesTransferred = 0;
         speedHistory = [];
 
-        // Crear lista de tareas (carpetas ZIP y archivos individuales)
+        // Crear tareas (carpetas y archivos individuales)
         const tasks = [];
         for (const folderName of selectedFolders) {
             tasks.push({ type: 'folder', name: folderName });
@@ -1250,116 +1112,91 @@
             }
         }
 
-        // Función para ejecutar una tarea
-        const runTask = async (task) => {
-            if (task.type === 'folder') {
-                const folderName = task.name;
-                const zip = new JSZip();
-                const folderFiles = files.filter(f => f.webkitRelativePath?.startsWith(folderName + '/'));
-                for (const file of folderFiles) {
-                    const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
-                    zip.file(relativePath, await file.arrayBuffer());
-                }
-                const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-                await sendFileAsZip(zipBlob, folderName + '.zip', zipBlob.size, totalSize);
-                // Eliminar archivos de carpeta ya enviados
-                files = files.filter(f => !(f.webkitRelativePath?.startsWith(folderName + '/')));
-                selectedFolders.delete(folderName);
-            } else {
-                const file = task.file;
-                await sendFile(file, totalSize);
-                files = files.filter(f => f !== file);
-            }
-        };
-
-        // Ejecutar tareas en paralelo limitado
-        const pool = [];
+        // Ejecutar en paralelo limitado
+        const pool = new Set();
         for (const task of tasks) {
-            const promise = runTask(task);
-            pool.push(promise);
-            if (pool.length >= MAX_PARALLEL) {
+            const p = runTask(task, totalSize).finally(() => pool.delete(p));
+            pool.add(p);
+            if (pool.size >= MAX_PARALLEL) {
                 await Promise.race(pool);
-                pool.splice(pool.findIndex(p => p === promise), 1);
             }
         }
         await Promise.all(pool);
 
-        alert('Transferencia completada');
         showNotification('Transferencia completada', 'Todos los archivos han sido enviados.');
+        alert('Transferencia completada');
         document.getElementById('progress-area').classList.add('hidden');
     }
 
-    // Envío de un archivo (con chunks ajustables y control de flujo)
-    async function sendFile(file, totalSize) {
-        const fileName = file.webkitRelativePath || file.name;
-        const fileSize = file.size;
-        let offset = 0;
-        let fileBytesSent = 0;
-        return new Promise((resolve, reject) => {
-            const sendNextChunk = async () => {
+    async function runTask(task, totalSize) {
+        if (task.type === 'folder') {
+            const folderName = task.name;
+            const zip = new JSZip();
+            const folderFiles = files.filter(f => f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/'));
+            for (const file of folderFiles) {
+                const relativePath = file.webkitRelativePath.replace(folderName + '/', '');
+                zip.file(relativePath, await file.arrayBuffer());
+            }
+            const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+            await sendFileData(zipBlob, folderName + '.zip', zipBlob.size, totalSize, true);
+            files = files.filter(f => !(f.webkitRelativePath && f.webkitRelativePath.startsWith(folderName + '/')));
+            selectedFolders.delete(folderName);
+        } else {
+            const file = task.file;
+            await sendFileData(file, file.webkitRelativePath || file.name, file.size, totalSize, false);
+            files = files.filter(f => f !== file);
+        }
+    }
+
+    function sendFileData(fileOrBlob, fileName, fileSize, totalSize, isZip) {
+        return new Promise(resolve => {
+            const chunkSize = currentChunkSize; // Fijo durante este archivo
+            const totalChunks = Math.ceil(fileSize / chunkSize);
+            // Enviar file_info primero (clave para que el receptor lo procese)
+            conn.send({ type: 'file_info', fileName, fileSize, totalChunks, fileId: fileName, totalFilesSize: totalSize });
+
+            let offset = 0;
+            const sendNext = async () => {
                 if (offset >= fileSize) {
-                    // Enviar mensaje de finalización
                     conn.send({ type: 'complete', fileName });
-                    logFileMessage(`✅ ${fileName} enviado`);
+                    logMsg(`✅ ${fileName} enviado`);
+                    // Ajustar tamaño de chunk según velocidad media
+                    const elapsed = (Date.now() - startTime) / 1000 || 1;
+                    if (bytesTransferred > 0) {
+                        const avgSpeed = bytesTransferred / elapsed;
+                        speedHistory.push(avgSpeed);
+                        if (speedHistory.length > 5) speedHistory.shift();
+                        const m = speedHistory.reduce((a,b) => a+b, 0) / speedHistory.length;
+                        if (m > 1024 * 1024) currentChunkSize = Math.min(1024 * 1024, currentChunkSize * 2);
+                        else if (m < 100 * 1024) currentChunkSize = Math.max(64 * 1024, currentChunkSize / 2);
+                        currentChunkSize = Math.round(currentChunkSize / (64 * 1024)) * (64 * 1024);
+                    }
                     resolve();
                     return;
                 }
-                const end = Math.min(offset + currentChunkSize, fileSize);
-                const chunkBlob = file.slice(offset, end);
-                let buffer = await chunkBlob.arrayBuffer();
+                const end = Math.min(offset + chunkSize, fileSize);
+                let buffer;
+                if (isZip) {
+                    buffer = await fileOrBlob.slice(offset, end).arrayBuffer();
+                } else {
+                    buffer = await fileOrBlob.slice(offset, end).arrayBuffer();
+                }
                 if (cryptoKey) buffer = await encryptBuf(cryptoKey, buffer);
-                const chunkData = buffer;
-                const chunkIndex = Math.floor(offset / currentChunkSize);
-                conn.send({ type: 'chunk', fileId: fileName, index: chunkIndex, data: chunkData, total: Math.ceil(fileSize / currentChunkSize) });
+                conn.send({ type: 'chunk', fileId: fileName, index: Math.floor(offset / chunkSize), data: buffer, total: totalChunks });
                 const sent = end - offset;
-                fileBytesSent += sent;
                 bytesTransferred += sent;
                 offset = end;
                 updateProgressUI(fileName, totalSize);
-                
-                // Control de flujo: si el buffer está lleno, esperar drain
-                if (conn.bufferedAmount > HIGH_WATER_MARK) {
-                    isDraining = true;
-                    sendQueue.push(sendNextChunk);
-                } else {
-                    // Pequeña pausa para no saturar la CPU
-                    await sleep(10);
-                    sendNextChunk();
-                }
-            };
-            sendNextChunk();
-        });
-    }
 
-    async function sendFileAsZip(zipBlob, fileName, fileSize, totalSize) {
-        let offset = 0;
-        return new Promise((resolve, reject) => {
-            const sendNextChunk = async () => {
-                if (offset >= fileSize) {
-                    conn.send({ type: 'complete', fileName });
-                    logFileMessage(`✅ ${fileName} enviado`);
-                    resolve();
-                    return;
-                }
-                const end = Math.min(offset + currentChunkSize, fileSize);
-                const chunkBlob = zipBlob.slice(offset, end);
-                let buffer = await chunkBlob.arrayBuffer();
-                if (cryptoKey) buffer = await encryptBuf(cryptoKey, buffer);
-                const chunkIndex = Math.floor(offset / currentChunkSize);
-                conn.send({ type: 'chunk', fileId: fileName, index: chunkIndex, data: buffer, total: Math.ceil(fileSize / currentChunkSize) });
-                offset = end;
-                bytesTransferred += (end - offset);
-                updateProgressUI(fileName, totalSize);
-                
                 if (conn.bufferedAmount > HIGH_WATER_MARK) {
                     isDraining = true;
-                    sendQueue.push(sendNextChunk);
+                    sendQueue.push(sendNext);
                 } else {
                     await sleep(10);
-                    sendNextChunk();
+                    sendNext();
                 }
             };
-            sendNextChunk();
+            sendNext();
         });
     }
 
@@ -1372,11 +1209,15 @@
         }
     }
 
+    function logMsg(m) {
+        const log = document.getElementById('file-log');
+        if (log) log.innerHTML += `<div>${m}</div>`;
+    }
+
     function updateProgressUI(fileName, totalSize) {
         const percent = Math.min(100, (bytesTransferred / totalSize) * 100);
         const elapsed = (Date.now() - startTime) / 1000 || 1;
         const speed = bytesTransferred / elapsed;
-        updateChunkSize(speed); // Ajustar chunk size según velocidad
         const remaining = speed > 0 ? (totalSize - bytesTransferred) / speed : 0;
         document.getElementById('progress-file-name').textContent = fileName;
         document.getElementById('progress-bar').style.width = percent + '%';
@@ -1384,14 +1225,9 @@
         document.getElementById('progress-eta').textContent = remaining > 0 && remaining < 86400 ? `⏳ ${Math.floor(remaining/60)}:${String(Math.floor(remaining%60)).padStart(2,'0')}` : '--:--';
     }
 
-    function logFileMessage(msg) {
-        const log = document.getElementById('file-log');
-        if (log) log.innerHTML += `<div>${escapeHtml(msg)}</div>`;
-    }
-
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-    // ==================== RECEPCIÓN DE ARCHIVOS (con IndexedDB para archivos grandes) ====================
+    // ==================== RECEPCIÓN DE ARCHIVOS (con IndexedDB) ====================
     async function handleFileInfo(data) {
         if (Object.keys(receivedFiles).length === 0) {
             receiverTransferStartTime = Date.now();
@@ -1406,10 +1242,10 @@
             name: data.fileName,
             size: data.fileSize,
             totalChunks: data.totalChunks,
-            receivedCount: 0,
+            received: 0,
             fileId: data.fileId
         };
-        // Inicializar almacenamiento de chunks en IndexedDB (limpiar si existía)
+        // Limpiar almacenamiento previo
         await deleteFileChunks(data.fileId, data.totalChunks);
     }
 
@@ -1421,15 +1257,13 @@
             try { chunkData = await decryptBuf(cryptoKey, data.data); }
             catch { return; }
         }
-        // Verificar si ya tenemos este chunk (por reenvíos)
-        const existing = await getChunk(data.fileId, data.index);
-        if (!existing) {
+        const exists = await getChunk(data.fileId, data.index);
+        if (!exists) {
             await saveChunk(data.fileId, data.index, chunkData);
-            fd.receivedCount++;
+            fd.received++;
             receiverBytesReceived += chunkData.byteLength;
         }
-
-        const percent = (fd.receivedCount / fd.totalChunks) * 100;
+        const percent = (fd.received / fd.totalChunks) * 100;
         document.getElementById('recv-bar').style.width = percent + '%';
         const elapsed = (Date.now() - receiverTransferStartTime) / 1000 || 1;
         const speed = receiverBytesReceived / elapsed;
@@ -1437,25 +1271,18 @@
         document.getElementById('recv-speed').textContent = speed > 1048576 ? (speed/1048576).toFixed(1)+' MB/s' : (speed/1024).toFixed(0)+' KB/s';
         document.getElementById('recv-eta').textContent = remaining > 0 && remaining < 86400 ? `⏳ ${Math.floor(remaining/60)}:${String(Math.floor(remaining%60)).padStart(2,'0')}` : '--:--';
 
-        if (fd.receivedCount === fd.totalChunks) {
-            // Reconstruir archivo desde IndexedDB
+        if (fd.received === fd.totalChunks) {
             const chunks = [];
             for (let i = 0; i < fd.totalChunks; i++) {
-                const chunk = await getChunk(data.fileId, i);
-                if (chunk) chunks.push(chunk);
+                const c = await getChunk(data.fileId, i);
+                if (c) chunks.push(c);
             }
             const blob = new Blob(chunks);
             saveAs(blob, fd.name);
-            // Limpiar chunks de IndexedDB
             await deleteFileChunks(data.fileId, fd.totalChunks);
             delete receivedFiles[data.fileId];
             document.getElementById('receiver-progress-area').innerHTML += `<p style="color:var(--accent-green); font-size:0.7rem;">✓ ${escapeHtml(fd.name)} guardado</p>`;
-            // Enviar ACK al emisor
-            if (conn && conn.open) {
-                conn.send({ type: 'ack', fileId: data.fileId });
-            }
-            // Notificación
-            showNotification('Archivo recibido', `Descarga completada: ${fd.name}`);
+            showNotification('Archivo recibido', fd.name);
             if (Object.keys(receivedFiles).length === 0) {
                 showNotification('Transferencia completada', 'Todos los archivos han sido recibidos.');
             }
